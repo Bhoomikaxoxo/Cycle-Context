@@ -126,9 +126,14 @@ aside {
 }
 .nav .ico {
   width: 18px;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 16px;
   flex-shrink: 0;
+}
+.nav .ico svg {
+  display: block;
 }
 .aside-bottom {
   margin-top: auto;
@@ -2060,27 +2065,27 @@ main {
   min-width: 0;
   flex: 1;
 }
-.voice-event-icon {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
+.voice-event-tag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  letter-spacing: .02em;
+  text-transform: uppercase;
   flex-shrink: 0;
+  line-height: 1.3;
 }
-.voice-event-icon.period {
+.voice-event-tag.period {
   background: #fdf2f8;
   color: var(--plum);
   border: 1px solid #fbcfe8;
 }
-.voice-event-icon.symptom {
+.voice-event-tag.symptom {
   background: #fef9c3;
   color: #854d0e;
   border: 1px solid #fef08a;
 }
-.voice-event-icon.context {
+.voice-event-tag.context {
   background: #f0fdf4;
   color: #166534;
   border: 1px solid #bbf7d0;

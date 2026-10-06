@@ -436,37 +436,32 @@ function renderCycleReadiness() {
   document.getElementById('readinessSource').textContent = sourceText;
 
   // Status classification & readiness guidance
-  let badgeClass, badgeText, tipTitle, tipIcon, tipBody;
+  let badgeClass, badgeText, tipTitle, tipBody;
   const daysUntilWindow = minDays - cycleDay;
 
   if (isBleeding) {
     badgeClass = 'bleeding';
     badgeText = `Active Menstrual Phase (Day ${cycleDay})`;
-    tipIcon = '🩸';
     tipTitle = 'Menstrual phase in progress';
     tipBody = 'You are currently in your bleeding phase. Take rest, stay hydrated, and log any pelvic sensations or flow notes.';
   } else if (cycleDay < minDays - 3) {
     badgeClass = 'building';
     badgeText = `Cycle Building · ~${daysUntilWindow}d to window`;
-    tipIcon = '🌱';
     tipTitle = `Window begins in ~${daysUntilWindow} days`;
     tipBody = `Expected window opens ${formatDate(earliestDateStr, { month: 'short', day: 'numeric' })} (Day ${minDays}). Typical follicular or mid-cycle phase; no extra preparation needed yet.`;
   } else if (cycleDay >= minDays - 3 && cycleDay < minDays) {
     badgeClass = 'approaching';
     badgeText = `Approaching window (~${daysUntilWindow}d)`;
-    tipIcon = '👜';
     tipTitle = 'Preparedness mode';
     tipBody = `Your cycle is nearing your typical start window (${formatDate(earliestDateStr, { month: 'short', day: 'numeric' })}). Keep supplies with you and watch for early physical signs.`;
   } else if (cycleDay >= minDays && cycleDay <= maxDays) {
     badgeClass = 'inside';
     badgeText = `Inside window (Day ${cycleDay} of ${minDays}–${maxDays}d)`;
-    tipIcon = '✨';
     tipTitle = 'Inside typical start window';
     tipBody = `You are in your normal start zone (${minDays}–${maxDays} days). Bleeding may begin any day; tap "Log period" when it starts.`;
   } else {
     badgeClass = 'extended';
     badgeText = `Beyond typical range (Day ${cycleDay})`;
-    tipIcon = '⏱';
     tipTitle = `Day ${cycleDay} (past your typical ${maxDays}d max)`;
     tipBody = cycleDay >= 90
       ? 'It has been 90+ days since your last period. FIGO criteria define this as an extended gap worth reviewing with a clinician.'
@@ -477,9 +472,10 @@ function renderCycleReadiness() {
   badgeEl.className = `readiness-badge ${badgeClass}`;
   badgeEl.textContent = badgeText;
 
-  document.getElementById('readinessIcon').textContent = tipIcon;
-  document.getElementById('readinessTipTitle').textContent = tipTitle;
-  document.getElementById('readinessTipBody').textContent = tipBody;
+  const tipTitleEl = document.getElementById('readinessTipTitle');
+  if (tipTitleEl) tipTitleEl.textContent = tipTitle;
+  const tipBodyEl = document.getElementById('readinessTipBody');
+  if (tipBodyEl) tipBodyEl.textContent = tipBody;
 
   // Track Visualizer: scale from 1 to max(cycleDay + 10, maxDays + 15, 50)
   const maxScale = Math.max(cycleDay + 10, maxDays + 15, 50);
@@ -698,7 +694,7 @@ function renderChangeComparison() {
           </div>
         </div>
         <div class="stat-delta ${cycleDeltaClass}">
-          <span>✦</span> ${cycleDeltaSummary}
+          <span>•</span> ${cycleDeltaSummary}
         </div>
       </div>
 
@@ -722,14 +718,14 @@ function renderChangeComparison() {
           </div>
         </div>
         <div class="stat-delta ${bleedDeltaClass}">
-          <span>✦</span> ${bleedDeltaSummary}
+          <span>•</span> ${bleedDeltaSummary}
         </div>
       </div>
     </div>
 
     <div class="explorer-symptoms-section">
       <div class="stat-header" style="margin-bottom:0">
-        <span class="stat-icon">✦</span>
+        <span class="stat-icon">◈</span>
         <strong>Symptoms Reported Around This Change</strong>
       </div>
       ${symptomsHTML}
@@ -1148,16 +1144,15 @@ function renderVoiceEvents() {
 
     const isPeriod = event.kind === 'period-start' || event.kind === 'period-end';
     const isContext = event.kind === 'context';
-    const lowerTitle = (event.title || '').toLowerCase();
-    const iconChar = isPeriod ? '🩸' : isContext ? '🏷' : (lowerTitle.includes('craving') ? '🍪' : lowerTitle.includes('bloat') || lowerTitle.includes('float') ? '🎈' : lowerTitle.includes('cramp') ? '⚡' : '✨');
-    const iconClass = isPeriod ? 'period' : isContext ? 'context' : 'symptom';
+    const tagClass = isPeriod ? 'period' : isContext ? 'context' : 'symptom';
+    const tagLabel = isPeriod ? 'Cycle' : isContext ? 'Milestone' : 'Check-in';
 
     const left = document.createElement('div');
     left.className = 'voice-event-card-left';
 
-    const icon = document.createElement('div');
-    icon.className = `voice-event-icon ${iconClass}`;
-    icon.textContent = iconChar;
+    const tag = document.createElement('span');
+    tag.className = `voice-event-tag ${tagClass}`;
+    tag.textContent = tagLabel;
 
     const meta = document.createElement('div');
     meta.className = 'voice-event-meta';
@@ -1181,7 +1176,7 @@ function renderVoiceEvents() {
       : formatDate(event.date, { month: 'short', day: 'numeric' });
 
     const dateText = document.createElement('span');
-    dateText.textContent = `📅 ${dateLabel}`;
+    dateText.textContent = dateLabel;
 
     const dateInput = document.createElement('input');
     dateInput.type = 'date';
@@ -1195,7 +1190,7 @@ function renderVoiceEvents() {
     subEl.append(dateChip);
 
     meta.append(titleEl, subEl);
-    left.append(icon, meta);
+    left.append(tag, meta);
 
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
