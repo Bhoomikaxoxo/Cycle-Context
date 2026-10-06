@@ -174,25 +174,88 @@ function timelineMarkup(list) {
     return '<p class="empty-state">Nothing to display for this filter.</p>';
   }
 
-  return list.slice().sort((a, b) => b.date.localeCompare(a.date)).map(entry => {
-    if (entry.type === 'document') {
-      const categoryTag = `<span class="tag lab-tag">${escapeHTML(entry.category || 'Lab / Report')}</span>`;
-      return `<div class="event lab-report">
-        <div class="event-date">${formatDate(entry.date, { month: 'short', day: 'numeric' })} · ${new Date(`${entry.date}T12:00:00`).getFullYear()}</div>
-        <div class="event-text"><strong>${escapeHTML(entry.title)}</strong>${escapeHTML(entry.detail || '')}<br>
-        ${categoryTag} <button class="text-button timeline-source" onclick="downloadDocumentById('${entry.documentId}')">Download original</button> <button class="text-button timeline-source" onclick="go('records')">View in records</button></div>
-      </div>`;
-    }
+  const byDate = new Map();
+  list.slice().sort((a, b) => b.date.localeCompare(a.date)).forEach(entry => {
+    if (!byDate.has(entry.date)) byDate.set(entry.date, []);
+    byDate.get(entry.date).push(entry);
+  });
 
-    const sourceTag = entry.sourceId ? '<button class="text-button timeline-source" onclick="go(\'records\')">View original voice note</button>' : '';
-    const typeLabel = entry.type === 'period' ? 'Cycle event'
-      : entry.type === 'context' ? 'Context marker'
-      : entry.type === 'record' ? 'Note added by you'
-      : 'Check-in';
-    return `<div class="event ${entry.type === 'context' ? 'marker' : ''}">
-      <div class="event-date">${formatDate(entry.date, { month: 'short', day: 'numeric' })} · ${new Date(`${entry.date}T12:00:00`).getFullYear()}</div>
-      <div class="event-text"><strong>${escapeHTML(entry.title)}</strong>${escapeHTML(entry.detail || '')}<br>
-      <span class="tag ${entry.type === 'period' ? 'plum' : entry.type === 'context' || entry.type === 'record' ? 'green' : ''}">${typeLabel}</span>${sourceTag}</div>
+  return Array.from(byDate.entries()).map(([dateStr, items]) => {
+    const hasMarker = items.some(e => e.type === 'context');
+    const hasPeriod = items.some(e => e.type === 'period');
+    const hasDoc = items.some(e => e.type === 'document');
+
+    const eventDotClass = hasDoc ? 'lab-report' : hasMarker ? 'marker' : '';
+    const formattedDate = formatDate(dateStr, { month: 'short', day: 'numeric' });
+    const year = new Date(`${dateStr}T12:00:00`).getFullYear();
+
+    const itemsHTML = items.map(entry => {
+      if (entry.type === 'document') {
+        return `<div class="timeline-day-entry lab-entry">
+          <div class="timeline-day-entry-main">
+            <strong>${escapeHTML(entry.title)}</strong>
+            ${entry.detail ? `<span class="timeline-entry-note">${escapeHTML(entry.detail)}</span>` : ''}
+          </div>
+          <div class="timeline-day-entry-tags">
+            <span class="tag lab-tag">${escapeHTML(entry.category || 'Lab / Report')}</span>
+            <button class="text-button timeline-source" onclick="downloadDocumentById('${entry.documentId}')">Download</button>
+            <button class="text-button timeline-source" onclick="go('records')">View in records</button>
+          </div>
+        </div>`;
+      }
+
+      if (entry.type === 'period') {
+        const detailText = entry.detail && entry.detail !== 'Cycle event' && entry.detail !== 'Added from your reviewed voice check-in'
+          ? `<span class="timeline-entry-note">${escapeHTML(entry.detail)}</span>`
+          : '';
+        return `<div class="timeline-day-entry period-entry">
+          <div class="timeline-day-entry-main">
+            <strong>${escapeHTML(entry.title)}</strong>
+            ${detailText}
+          </div>
+          <div class="timeline-day-entry-tags">
+            <span class="tag plum">Cycle event</span>
+          </div>
+        </div>`;
+      }
+
+      if (entry.type === 'context') {
+        return `<div class="timeline-day-entry context-entry">
+          <div class="timeline-day-entry-main">
+            <strong>${escapeHTML(entry.title)}</strong>
+            ${entry.detail ? `<span class="timeline-entry-note">${escapeHTML(entry.detail)}</span>` : ''}
+          </div>
+          <div class="timeline-day-entry-tags">
+            <span class="tag green">Context marker</span>
+          </div>
+        </div>`;
+      }
+
+      // Check-in or personal note
+      const sourceTag = entry.sourceId ? `<button class="text-button timeline-source" onclick="go('records')">View voice note</button>` : '';
+      const detailText = entry.detail && entry.detail !== 'Added by you' && entry.detail !== 'Added from your reviewed voice check-in' && entry.detail !== 'Check-in'
+        ? `<span class="timeline-entry-note">${escapeHTML(entry.detail)}</span>`
+        : '';
+
+      return `<div class="timeline-day-entry checkin-entry">
+        <div class="timeline-day-entry-main">
+          <strong>${escapeHTML(entry.title)}</strong>
+          ${detailText}
+        </div>
+        <div class="timeline-day-entry-tags">
+          <span class="tag ${entry.type === 'record' ? 'green' : ''}">Check-in</span>
+          ${sourceTag}
+        </div>
+      </div>`;
+    }).join('');
+
+    return `<div class="event ${eventDotClass}">
+      <div class="event-date">${formattedDate} · ${year}</div>
+      <div class="event-text">
+        <div class="timeline-day-group">
+          ${itemsHTML}
+        </div>
+      </div>
     </div>`;
   }).join('');
 }
@@ -238,7 +301,7 @@ function cycleIntervals() {
     days: dayNumber(entry.date) - dayNumber(starts[index].date),
     start: starts[index],
     end: entry
-  })).filter(interval => interval.days > 0 && interval.days < 200);
+  })).filter(interval => interval.days >= 15 && interval.days < 200);
 }
 
 function bleedingDurations() {
@@ -343,12 +406,12 @@ function renderCycleReadiness() {
 
   if (intervals.length >= 2) {
     const dayVals = intervals.slice(-6).map(i => i.days);
-    minDays = Math.min(...dayVals);
-    maxDays = Math.max(...dayVals);
+    minDays = Math.max(21, Math.min(...dayVals));
+    maxDays = Math.max(minDays + 2, Math.max(...dayVals));
     avgDays = Math.round(dayVals.reduce((a, b) => a + b, 0) / dayVals.length);
     sourceText = `Based on your last ${dayVals.length} logged cycles (${minDays}–${maxDays} d range)`;
   } else if (intervals.length === 1) {
-    const single = intervals[0].days;
+    const single = Math.max(21, intervals[0].days);
     minDays = Math.max(21, single - 4);
     maxDays = single + 4;
     avgDays = single;
@@ -970,7 +1033,18 @@ function toggleRecording() {
   const status = document.getElementById('voiceStatus');
   if (isRecording) return recognition?.stop();
   if (!SpeechRecognition) {
-    status.textContent = 'Voice capture is not available here. Type your check-in and review it below.';
+    const isFile = window.location.protocol === 'file:';
+    const isFirefox = navigator.userAgent.includes('Firefox');
+    const isBrave = navigator.brave !== undefined;
+    if (isFile) {
+      status.textContent = 'Voice capture requires running through http://localhost:3000 (not opening the HTML file directly).';
+    } else if (isFirefox) {
+      status.textContent = 'Firefox does not support Web Speech recognition. Open http://localhost:3000 in Chrome, Edge, or Safari.';
+    } else if (isBrave) {
+      status.textContent = 'Brave disables Web Speech by default. Try Google Chrome or Safari at http://localhost:3000.';
+    } else {
+      status.textContent = 'Voice capture is not supported in this browser. Open http://localhost:3000 in Chrome, Edge, or Safari.';
+    }
     document.getElementById('voiceText').focus();
     return;
   }
@@ -1044,63 +1118,98 @@ function showVoiceReview(note) {
   document.getElementById('voiceReview').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
+function toggleSpokenTextEdit() {
+  const container = document.getElementById('reviewTextContainer');
+  const btn = document.getElementById('toggleTranscriptBtn');
+  if (!container) return;
+  const isHidden = container.style.display === 'none';
+  container.style.display = isHidden ? 'block' : 'none';
+  if (btn) btn.textContent = isHidden ? 'Hide words' : 'Edit words';
+}
+
 function addVoiceEvent() {
-  voiceDraft.push({ kind: 'symptom', title: '', date: localISODate() });
+  const custom = prompt('What detail would you like to add? (e.g. Cramps, Headache, Spotting, Mood changes)');
+  if (!custom || !custom.trim()) return;
+  voiceDraft.push({ kind: 'symptom', title: custom.trim(), date: localISODate() });
   renderVoiceEvents();
 }
 
 function renderVoiceEvents() {
   const container = document.getElementById('voiceEvents');
   if (!voiceDraft.length) {
-    container.innerHTML = '<p class="empty-state">No details suggested. Your original note will still be saved. Add a detail if you want it in the cycle history.</p>';
+    container.innerHTML = '<p class="empty-state" style="padding:10px 0;font-size:12px;color:var(--muted)">No specific cycle details detected. Your check-in will still be kept in Records.</p>';
     return;
   }
 
   container.innerHTML = '';
   voiceDraft.forEach((event, index) => {
-    const row = document.createElement('div');
-    row.className = 'voice-event-row';
-    const kind = document.createElement('select');
-    kind.setAttribute('aria-label', 'Detail type');
-    eventKinds.forEach(([value, label]) => {
-      const option = document.createElement('option');
-      option.value = value;
-      option.textContent = label;
-      kind.append(option);
+    const card = document.createElement('div');
+    card.className = 'voice-event-card';
+
+    const isPeriod = event.kind === 'period-start' || event.kind === 'period-end';
+    const isContext = event.kind === 'context';
+    const lowerTitle = (event.title || '').toLowerCase();
+    const iconChar = isPeriod ? '🩸' : isContext ? '🏷' : (lowerTitle.includes('craving') ? '🍪' : lowerTitle.includes('bloat') || lowerTitle.includes('float') ? '🎈' : lowerTitle.includes('cramp') ? '⚡' : '✨');
+    const iconClass = isPeriod ? 'period' : isContext ? 'context' : 'symptom';
+
+    const left = document.createElement('div');
+    left.className = 'voice-event-card-left';
+
+    const icon = document.createElement('div');
+    icon.className = `voice-event-icon ${iconClass}`;
+    icon.textContent = iconChar;
+
+    const meta = document.createElement('div');
+    meta.className = 'voice-event-meta';
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'voice-event-title';
+    titleEl.textContent = event.title || 'Check-in detail';
+
+    const subEl = document.createElement('div');
+    subEl.className = 'voice-event-sub';
+
+    const dateChip = document.createElement('label');
+    dateChip.className = 'voice-event-date-chip';
+    dateChip.title = 'Click to change date';
+
+    const todayStr = localISODate();
+    const diffDays = dayNumber(todayStr) - dayNumber(event.date);
+    const dateLabel = diffDays === 0 ? 'Today'
+      : diffDays === 1 ? 'Yesterday'
+      : diffDays > 1 && diffDays <= 7 ? `${diffDays} days ago`
+      : formatDate(event.date, { month: 'short', day: 'numeric' });
+
+    const dateText = document.createElement('span');
+    dateText.textContent = `📅 ${dateLabel}`;
+
+    const dateInput = document.createElement('input');
+    dateInput.type = 'date';
+    dateInput.value = event.date;
+    dateInput.addEventListener('change', () => {
+      event.date = dateInput.value;
+      renderVoiceEvents();
     });
-    kind.value = event.kind;
-    kind.addEventListener('change', () => { event.kind = kind.value; });
 
-    const title = document.createElement('input');
-    title.type = 'text';
-    title.value = event.title;
-    title.placeholder = 'What happened?';
-    title.setAttribute('aria-label', 'Edit detail');
-    title.addEventListener('input', () => { event.title = title.value; });
+    dateChip.append(dateText, dateInput);
+    subEl.append(dateChip);
 
-    const date = document.createElement('input');
-    date.type = 'date';
-    date.value = event.date;
-    date.setAttribute('aria-label', 'Date for this detail');
-    date.addEventListener('change', () => { event.date = date.value; });
+    meta.append(titleEl, subEl);
+    left.append(icon, meta);
 
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'remove-event';
-    remove.textContent = 'Remove';
-    remove.addEventListener('click', () => {
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'voice-event-remove';
+    removeBtn.setAttribute('aria-label', `Remove ${event.title}`);
+    removeBtn.innerHTML = '&times;';
+    removeBtn.title = 'Remove this detail';
+    removeBtn.addEventListener('click', () => {
       voiceDraft.splice(index, 1);
       renderVoiceEvents();
     });
 
-    const badge = document.createElement('span');
-    const isUncertain = event.dateSource === 'inferred' || event.dateSource === 'defaulted';
-    badge.className = `tag ${isUncertain ? 'amber' : 'green'}`;
-    badge.textContent = event.dateSource === 'inferred' ? 'Inferred date' : event.dateSource === 'defaulted' ? 'Defaulted date' : 'Spoken date';
-    badge.title = isUncertain ? 'Derived from sentence context. You can change this date.' : 'Extracted directly from your check-in.';
-
-    row.append(kind, title, date, badge, remove);
-    container.append(row);
+    card.append(left, removeBtn);
+    container.append(card);
   });
 }
 
@@ -1726,6 +1835,8 @@ Object.assign(window, {
   switchSymptomView,
   filterTimeline,
   downloadDocumentById,
+  toggleSpokenTextEdit,
+  refreshVoiceEvents,
   resetData,
   handleDocumentFiles,
   removeDocument

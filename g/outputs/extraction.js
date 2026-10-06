@@ -6,7 +6,8 @@ export const symptomTerms = [
   ['Lower energy', ['low energy', 'tired', 'fatigue', 'exhausted']],
   ['Mood changes', ['mood swings', 'mood change', 'irritable', 'anxious', 'sad']],
   ['Sleep changes', ['sleep changes', 'insomnia', 'poor sleep', 'slept']],
-  ['Bloating', ['bloating', 'bloated', 'bloat']],
+  ['Bloating', ['bloating', 'bloated', 'bloat', 'floating']],
+  ['Food cravings', ['food cravings', 'food craving', 'cravings', 'craving', 'craving for food', 'craving for a lot of food']],
   ['Nausea', ['nausea', 'nauseous', 'vomiting']],
   ['Spotting', ['spotting']],
   ['Heavy bleeding', ['heavy bleeding', 'heavy flow']],
@@ -76,8 +77,10 @@ export function extractDateMentions(text, refDate) {
   const ref = refDate || localISODate();
   const patterns = [
     { type: 'relative', regex: /\bday before yesterday\b/gi, resolve: () => dateFromDayOffset(-2, ref) },
-    { type: 'relative', regex: /\b(one|two|three|four|five|six|seven)\s+days?\s+ago\b/gi, resolve: match => dateFromDayOffset(-({ one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7 }[match[1].toLowerCase()]), ref) },
-    { type: 'relative', regex: /\b(\d+)\s+days?\s+ago\b/gi, resolve: match => dateFromDayOffset(-Number(match[1]), ref) },
+    { type: 'relative', regex: /\b(one|two|three|four|five|six|seven)\s+days?\s+(?:ago|back|earlier|prior)\b/gi, resolve: match => dateFromDayOffset(-({ one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7 }[match[1].toLowerCase()]), ref) },
+    { type: 'relative', regex: /\b(\d+)\s+days?\s+(?:ago|back|earlier|prior)\b/gi, resolve: match => dateFromDayOffset(-Number(match[1]), ref) },
+    { type: 'relative', regex: /\b(?:a\s+)?couple\s+(?:of\s+)?days\s+(?:ago|back|earlier|prior)\b/gi, resolve: () => dateFromDayOffset(-2, ref) },
+    { type: 'relative', regex: /\b(?:a\s+)?few\s+days\s+(?:ago|back|earlier|prior)\b/gi, resolve: () => dateFromDayOffset(-3, ref) },
     { type: 'relative', regex: /\b(yesterday|last night)\b/gi, resolve: () => dateFromDayOffset(-1, ref) },
     { type: 'relative', regex: /\b(today|this morning|this afternoon|tonight)\b/gi, resolve: () => ref },
     { type: 'relative', regex: /\b(last\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/gi, resolve: match => weekdayDate(match[0], ref) },
@@ -209,7 +212,7 @@ export function parseVoiceEvents(text, refDate) {
   };
 
   // 1. Period start phrases
-  const startRegex = /\b(?:my\s+)?period\s+(?:has\s+)?(?:started|began)\b|\b(?:started|began)\s+(?:my\s+)?period\b|\bstarted\s+bleeding\b|\bbleeding\s+(?:has\s+)?(?:started|began)\b|\bgot\s+my\s+period\b|\bperiod\s+came\b/gi;
+  const startRegex = /\b(?:my\s+)?periods?\s+(?:has\s+|have\s+)?(?:just\s+|finally\s+|actually\s+|officially\s+)?(?:started|began|come|came)\b|\b(?:just\s+|finally\s+)?(?:started|began)\s+(?:my\s+)?periods?\b|\b(?:started|began)\s+bleeding\b|\bbleeding\s+(?:has\s+)?(?:just\s+)?(?:started|began)\b|\bgot\s+my\s+periods?\b|\bperiods?\s+(?:just\s+)?came\b/gi;
   for (const m of text.matchAll(startRegex)) {
     if (!isNegated(text, m.index)) {
       addMatch(m.index, m[0].length, 'period-start', 'Period started');
@@ -217,7 +220,7 @@ export function parseVoiceEvents(text, refDate) {
   }
 
   // 2. Period end phrases
-  const endRegex = /\b(?:my\s+)?period\s+(?:has\s+)?(?:ended|stopped|finished)\b|\b(?:ended|stopped|finished)\s+(?:my\s+)?period\b|\bbleeding\s+(?:has\s+)?(?:ended|stopped|ceased)\b|\bfinished\s+bleeding\b|\bstopped\s+bleeding\b|\bbleeding\s+has\s+stopped\b|\bwrapped\s+up\b/gi;
+  const endRegex = /\b(?:my\s+)?periods?\s+(?:has\s+|have\s+)?(?:just\s+|finally\s+|actually\s+)?(?:ended|stopped|finished)\b|\b(?:ended|stopped|finished)\s+(?:my\s+)?periods?\b|\bbleeding\s+(?:has\s+)?(?:just\s+)?(?:ended|stopped|ceased)\b|\bfinished\s+bleeding\b|\bstopped\s+bleeding\b|\bbleeding\s+has\s+stopped\b|\bwrapped\s+up\b/gi;
   for (const m of text.matchAll(endRegex)) {
     if (!isNegated(text, m.index)) {
       addMatch(m.index, m[0].length, 'period-end', 'Period ended');
@@ -226,7 +229,7 @@ export function parseVoiceEvents(text, refDate) {
 
   // 3. Conjunction / secondary period predicates
   // e.g. "started on Oct 1 and ended on Oct 4", "began on Oct 2, ended Oct 5", "started Monday, finished Thursday"
-  if (rawMatches.some(m => m.kind === 'period-start') || /\b(?:period|bleeding)\b/i.test(text)) {
+  if (rawMatches.some(m => m.kind === 'period-start') || /\b(?:periods?|bleeding)\b/i.test(text)) {
     const secondaryEndRegex = /\b(?:and\s+|then\s+)?(?:it\s+)?(?:ended|finished|stopped|ceased|wrapped\s+up)\b/gi;
     for (const m of text.matchAll(secondaryEndRegex)) {
       if (!rawMatches.some(existing => Math.abs(existing.index - m.index) < 10 && existing.kind === 'period-end') && !isNegated(text, m.index)) {
