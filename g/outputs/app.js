@@ -56,6 +56,28 @@ const eventKinds = [
   ['note', 'General note']
 ];
 
+const SYMPTOM_CHIPS = ['Lower energy', 'Pelvic discomfort', 'Cramps', 'Sleep changes', 'Mood changes', 'Headache'];
+const selectedChips = new Set();
+
+function renderChips() {
+  document.getElementById('chipRow').innerHTML = SYMPTOM_CHIPS.map(chip => {
+    const on = selectedChips.has(chip);
+    return `<button type="button" class="chip${on ? ' selected' : ''}" aria-pressed="${on}" onclick="toggleChip('${chip}')">${escapeHTML(chip)}</button>`;
+  }).join('');
+}
+
+function toggleChip(chip) {
+  selectedChips.has(chip) ? selectedChips.delete(chip) : selectedChips.add(chip);
+  renderChips();
+}
+
+// Known label -> slug (e.g. "Lower energy" -> "lower-energy"); anything else -> "other".
+function categoryFor(label) {
+  const known = SYMPTOM_CHIPS.find(c => c.toLowerCase() === label.trim().toLowerCase());
+  return known ? known.toLowerCase().replace(/\s+/g, '-') : 'other';
+}
+
+
 function readJSON(key, fallback) {
   try {
     const value = JSON.parse(localStorage.getItem(key));
@@ -130,13 +152,38 @@ document.getElementById('todayDate').textContent = new Date().toLocaleDateString
   weekday: 'short', month: 'long', day: 'numeric'
 });
 
+let currentTimelineFilter = 'all';
+
+function getAllTimelineItems() {
+  const visibleEntries = entries.filter(entry => entry.type !== 'voice-source');
+  const docItems = documents.filter(doc => doc.recordDate && doc.showOnTimeline !== false).map(doc => ({
+    id: 'doc-' + doc.id,
+    type: 'document',
+    date: doc.recordDate,
+    title: doc.name,
+    category: doc.category || 'Lab / Medical report',
+    detail: doc.keyFinding ? `Key finding: ${doc.keyFinding}${doc.notes ? ` · Note: ${doc.notes}` : ''}` : (doc.notes || ''),
+    documentId: doc.id,
+    fileName: doc.name
+  }));
+  return [...visibleEntries, ...docItems].sort((a, b) => b.date.localeCompare(a.date));
+}
+
 function timelineMarkup(list) {
-  const visibleEntries = list.filter(entry => entry.type !== 'voice-source');
-  if (!visibleEntries.length) {
-    return '<p class="empty-state">Nothing on your timeline yet. Add a period date or check-in to begin.</p>';
+  if (!list.length) {
+    return '<p class="empty-state">Nothing to display for this filter.</p>';
   }
 
-  return visibleEntries.slice().sort((a, b) => b.date.localeCompare(a.date)).map(entry => {
+  return list.slice().sort((a, b) => b.date.localeCompare(a.date)).map(entry => {
+    if (entry.type === 'document') {
+      const categoryTag = `<span class="tag lab-tag">${escapeHTML(entry.category || 'Lab / Report')}</span>`;
+      return `<div class="event lab-report">
+        <div class="event-date">${formatDate(entry.date, { month: 'short', day: 'numeric' })} · ${new Date(`${entry.date}T12:00:00`).getFullYear()}</div>
+        <div class="event-text"><strong>${escapeHTML(entry.title)}</strong>${escapeHTML(entry.detail || '')}<br>
+        ${categoryTag} <button class="text-button timeline-source" onclick="downloadDocumentById('${entry.documentId}')">Download original</button> <button class="text-button timeline-source" onclick="go('records')">View in records</button></div>
+      </div>`;
+    }
+
     const sourceTag = entry.sourceId ? '<button class="text-button timeline-source" onclick="go(\'records\')">View original voice note</button>' : '';
     const typeLabel = entry.type === 'period' ? 'Cycle event'
       : entry.type === 'context' ? 'Context marker'
@@ -148,6 +195,36 @@ function timelineMarkup(list) {
       <span class="tag ${entry.type === 'period' ? 'plum' : entry.type === 'context' || entry.type === 'record' ? 'green' : ''}">${typeLabel}</span>${sourceTag}</div>
     </div>`;
   }).join('');
+}
+
+function filterTimeline(filter) {
+  currentTimelineFilter = filter;
+  document.querySelectorAll('.timeline-filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.filter === filter);
+  });
+  renderTimelineOnly();
+}
+
+function renderTimelineOnly() {
+  const allItems = getAllTimelineItems();
+  let filtered = allItems;
+  if (currentTimelineFilter === 'period') {
+    filtered = allItems.filter(item => item.type === 'period');
+  } else if (currentTimelineFilter === 'symptom') {
+    filtered = allItems.filter(item => item.type === 'symptom');
+  } else if (currentTimelineFilter === 'context') {
+    filtered = allItems.filter(item => item.type === 'context');
+  } else if (currentTimelineFilter === 'document') {
+    filtered = allItems.filter(item => item.type === 'document');
+  }
+  const fullEl = document.getElementById('fullTimeline');
+  if (fullEl) {
+    fullEl.innerHTML = timelineMarkup(filtered);
+  }
+  const totalEl = document.getElementById('eventTotal');
+  if (totalEl) {
+    totalEl.textContent = `${filtered.length} ${filtered.length === 1 ? 'entry' : 'entries'}`;
+  }
 }
 
 function periodStarts() {
@@ -229,6 +306,136 @@ function renderStats() {
   }
 }
 
+function renderCycleReadiness() {
+  const card = document.getElementById('readinessCard');
+  if (!card) return;
+
+  const starts = periodStarts();
+  if (!starts.length) {
+    document.getElementById('readinessDates').textContent = '—';
+    document.getElementById('readinessCycleDay').textContent = 'Day —';
+    document.getElementById('readinessBadge').textContent = 'Needs 1 period start';
+    document.getElementById('readinessBadge').className = 'readiness-badge building';
+    document.getElementById('readinessSource').textContent = 'Log your last period start to calculate your next window';
+    document.getElementById('readinessTipTitle').textContent = 'Awaiting your first period start';
+    document.getElementById('readinessTipBody').textContent = 'Once you record a period start date, Cycle Context will map your personal window of possibility.';
+    document.getElementById('readinessBand').style.left = '0%';
+    document.getElementById('readinessBand').style.width = '0%';
+    document.getElementById('readinessMarker').style.left = '0%';
+    return;
+  }
+
+  const todayStr = localISODate();
+  const todayNum = dayNumber(todayStr);
+  const lastStart = starts[starts.length - 1];
+  const lastStartNum = dayNumber(lastStart.date);
+  const cycleDay = Math.max(1, todayNum - lastStartNum + 1);
+
+  // Check if currently bleeding
+  const ends = entries.filter(e => e.type === 'period' && (e.periodRole === 'end' || e.title === 'Period ended'))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const recentEnd = ends.filter(e => e.date >= lastStart.date)[0];
+  const isBleeding = (!recentEnd && cycleDay <= 7) || (recentEnd && todayNum <= dayNumber(recentEnd.date));
+
+  // Cycle interval history
+  const intervals = cycleIntervals();
+  let minDays, maxDays, avgDays, sourceText;
+
+  if (intervals.length >= 2) {
+    const dayVals = intervals.slice(-6).map(i => i.days);
+    minDays = Math.min(...dayVals);
+    maxDays = Math.max(...dayVals);
+    avgDays = Math.round(dayVals.reduce((a, b) => a + b, 0) / dayVals.length);
+    sourceText = `Based on your last ${dayVals.length} logged cycles (${minDays}–${maxDays} d range)`;
+  } else if (intervals.length === 1) {
+    const single = intervals[0].days;
+    minDays = Math.max(21, single - 4);
+    maxDays = single + 4;
+    avgDays = single;
+    sourceText = `Based on previous interval (${single} d) with ±4 days variation buffer`;
+  } else {
+    // Standard FIGO normal variation benchmark (24-38 days)
+    minDays = 24;
+    maxDays = 38;
+    avgDays = 28;
+    sourceText = 'Based on FIGO reference window (24–38 d) until more cycles are logged';
+  }
+
+  // Calculate earliest and latest expected dates using UTC millisecond arithmetic
+  const earliestDate = new Date((lastStartNum + minDays - 1) * 86_400_000);
+  const latestDate = new Date((lastStartNum + maxDays - 1) * 86_400_000);
+  const earliestDateStr = localISODate(earliestDate);
+  const latestDateStr = localISODate(latestDate);
+
+  const formattedWindow = `${formatDate(earliestDateStr, { month: 'short', day: 'numeric' })} – ${formatDate(latestDateStr, { month: 'short', day: 'numeric' })}`;
+  document.getElementById('readinessDates').textContent = formattedWindow;
+  document.getElementById('readinessCycleDay').textContent = `Day ${cycleDay}`;
+  document.getElementById('readinessSource').textContent = sourceText;
+
+  // Status classification & readiness guidance
+  let badgeClass, badgeText, tipTitle, tipIcon, tipBody;
+  const daysUntilWindow = minDays - cycleDay;
+
+  if (isBleeding) {
+    badgeClass = 'bleeding';
+    badgeText = `Active Menstrual Phase (Day ${cycleDay})`;
+    tipIcon = '🩸';
+    tipTitle = 'Menstrual phase in progress';
+    tipBody = 'You are currently in your bleeding phase. Take rest, stay hydrated, and log any pelvic sensations or flow notes.';
+  } else if (cycleDay < minDays - 3) {
+    badgeClass = 'building';
+    badgeText = `Cycle Building · ~${daysUntilWindow}d to window`;
+    tipIcon = '🌱';
+    tipTitle = `Window begins in ~${daysUntilWindow} days`;
+    tipBody = `Expected window opens ${formatDate(earliestDateStr, { month: 'short', day: 'numeric' })} (Day ${minDays}). Typical follicular or mid-cycle phase; no extra preparation needed yet.`;
+  } else if (cycleDay >= minDays - 3 && cycleDay < minDays) {
+    badgeClass = 'approaching';
+    badgeText = `Approaching window (~${daysUntilWindow}d)`;
+    tipIcon = '👜';
+    tipTitle = 'Preparedness mode';
+    tipBody = `Your cycle is nearing your typical start window (${formatDate(earliestDateStr, { month: 'short', day: 'numeric' })}). Keep supplies with you and watch for early physical signs.`;
+  } else if (cycleDay >= minDays && cycleDay <= maxDays) {
+    badgeClass = 'inside';
+    badgeText = `Inside window (Day ${cycleDay} of ${minDays}–${maxDays}d)`;
+    tipIcon = '✨';
+    tipTitle = 'Inside typical start window';
+    tipBody = `You are in your normal start zone (${minDays}–${maxDays} days). Bleeding may begin any day; tap "Log period" when it starts.`;
+  } else {
+    badgeClass = 'extended';
+    badgeText = `Beyond typical range (Day ${cycleDay})`;
+    tipIcon = '⏱';
+    tipTitle = `Day ${cycleDay} (past your typical ${maxDays}d max)`;
+    tipBody = cycleDay >= 90
+      ? 'It has been 90+ days since your last period. FIGO criteria define this as an extended gap worth reviewing with a clinician.'
+      : `Past your recent ${maxDays}-day upper range. Natural shifts in sleep, stress, or hormones commonly extend intervals. Note how you are feeling in check-ins.`;
+  }
+
+  const badgeEl = document.getElementById('readinessBadge');
+  badgeEl.className = `readiness-badge ${badgeClass}`;
+  badgeEl.textContent = badgeText;
+
+  document.getElementById('readinessIcon').textContent = tipIcon;
+  document.getElementById('readinessTipTitle').textContent = tipTitle;
+  document.getElementById('readinessTipBody').textContent = tipBody;
+
+  // Track Visualizer: scale from 1 to max(cycleDay + 10, maxDays + 15, 50)
+  const maxScale = Math.max(cycleDay + 10, maxDays + 15, 50);
+  const scalePercent = val => Math.max(0, Math.min(100, (val / maxScale) * 100));
+
+  const bandLeft = scalePercent(minDays);
+  const bandRight = scalePercent(maxDays);
+  const bandWidth = Math.max(2, bandRight - bandLeft);
+  const markerLeft = scalePercent(cycleDay);
+
+  document.getElementById('readinessBand').style.left = `${bandLeft}%`;
+  document.getElementById('readinessBand').style.width = `${bandWidth}%`;
+  document.getElementById('readinessMarker').style.left = `${markerLeft}%`;
+
+  document.getElementById('readinessScaleStart').textContent = `Day 1 (${formatDate(lastStart.date, { month: 'short', day: 'numeric' })})`;
+  document.getElementById('readinessScaleWindow').textContent = `Window: Day ${minDays}–${maxDays}`;
+  document.getElementById('readinessScaleEnd').textContent = `Day ${maxScale}`;
+}
+
 function renderCycleChart() {
   const intervals = cycleIntervals().slice(-6);
   const chart = document.getElementById('cycleChart');
@@ -272,37 +479,362 @@ function rangeText(intervals) {
   return `${Math.min(...lengths)}–${Math.max(...lengths)} days across ${lengths.length} recorded interval${lengths.length === 1 ? '' : 's'}`;
 }
 
+let selectedMarkerId = null;
+
+function selectChangeMarker(id) {
+  selectedMarkerId = id;
+  renderChangeComparison();
+}
+
 function renderChangeComparison() {
   const markers = entries.filter(entry => entry.type === 'context').sort((a, b) => b.date.localeCompare(a.date));
   const label = document.getElementById('changeMarkerLabel');
   const target = document.getElementById('changeCompare');
+  const selectWrapper = document.getElementById('changeSelectWrapper');
+
   if (!markers.length) {
-    label.textContent = 'Personal markers';
-    target.innerHTML = '<p class="empty-state">Mark a change on your timeline to compare the cycle history before and after it.</p>';
+    if (label) label.textContent = 'Personal markers';
+    if (selectWrapper) selectWrapper.innerHTML = '';
+    target.innerHTML = `<div class="empty-state" style="padding:24px 0">
+      <p style="margin-bottom:12px">No context milestones recorded yet. When you add a medication change, lifestyle shift, or health event, you can explore how your cycle and symptoms shifted before vs after.</p>
+      <button class="btn primary" onclick="openLog('context')">＋ Mark a milestone</button>
+    </div>`;
     return;
   }
 
-  const marker = markers[0];
+  if (!selectedMarkerId || !markers.some(m => (m.id || `${m.date}-${m.title}`) === selectedMarkerId)) {
+    selectedMarkerId = markers[0].id || `${markers[0].date}-${markers[0].title}`;
+  }
+
+  if (selectWrapper) {
+    selectWrapper.innerHTML = `<select onchange="selectChangeMarker(this.value)" aria-label="Select milestone to compare">
+      ${markers.map(m => {
+        const id = m.id || `${m.date}-${m.title}`;
+        const isSel = id === selectedMarkerId;
+        return `<option value="${escapeHTML(id)}"${isSel ? ' selected' : ''}>${escapeHTML(m.title)} (${formatDate(m.date, { month: 'short', day: 'numeric', year: 'numeric' })})</option>`;
+      }).join('')}
+    </select>`;
+  }
+
+  const marker = markers.find(m => (m.id || `${m.date}-${m.title}`) === selectedMarkerId) || markers[0];
+  if (label) label.textContent = `${marker.title} · ${formatDate(marker.date, { month: 'short', day: 'numeric' })}`;
+
   const intervals = cycleIntervals();
-  const before = intervals.filter(item => item.end.date <= marker.date);
-  const after = intervals.filter(item => item.end.date > marker.date);
-  label.textContent = `${marker.title} · ${formatDate(marker.date, { month: 'short', day: 'numeric' })}`;
-  target.innerHTML = `<div class="comparison"><h4>${escapeHTML(marker.title)}</h4><p>Cycle lengths recorded on either side of this date.</p>
-    <div class="split"><div><small>Before · ${before.length} interval${before.length === 1 ? '' : 's'}</small><strong>${rangeText(before)}</strong></div>
-    <div><small>After · ${after.length} interval${after.length === 1 ? '' : 's'}</small><strong>${rangeText(after)}</strong></div></div>
-  </div><div class="callout">This comparison shows timing in your records. It does not show that the marker caused a change.</div>`;
+  const beforeIntervals = intervals.filter(item => item.end.date <= marker.date);
+  const afterIntervals = intervals.filter(item => item.end.date > marker.date);
+
+  const calcIntervalStats = (list) => {
+    if (!list.length) return null;
+    const days = list.map(i => i.days);
+    const min = Math.min(...days);
+    const max = Math.max(...days);
+    const mean = Math.round(days.reduce((a, b) => a + b, 0) / days.length);
+    const spread = max - min;
+    const rangeStr = min === max ? `${min} days` : `${min}–${max} days`;
+    return { count: list.length, min, max, mean, spread, rangeStr };
+  };
+
+  const beforeCycle = calcIntervalStats(beforeIntervals);
+  const afterCycle = calcIntervalStats(afterIntervals);
+
+  let cycleDeltaSummary = 'Record at least 1 cycle interval on each side to view change metrics';
+  let cycleDeltaClass = 'neutral';
+  if (beforeCycle && afterCycle) {
+    const diff = afterCycle.mean - beforeCycle.mean;
+    const spreadDiff = afterCycle.spread - beforeCycle.spread;
+    const diffText = diff === 0 ? 'Same average length' : `${diff > 0 ? `+${diff}` : diff} days average length`;
+    const spreadText = spreadDiff === 0 ? 'unchanged spread' : `spread ${spreadDiff < 0 ? `reduced by ${Math.abs(spreadDiff)}d` : `widened by ${spreadDiff}d`}`;
+    cycleDeltaSummary = `${diffText} · Variation ${spreadText}`;
+    cycleDeltaClass = spreadDiff <= 0 ? 'positive' : 'neutral';
+  }
+
+  const durations = bleedingDurations();
+  const beforeDurations = durations.filter(d => d.end.date <= marker.date);
+  const afterDurations = durations.filter(d => d.end.date > marker.date);
+
+  const calcBleedStats = (list) => {
+    if (!list.length) return null;
+    const days = list.map(d => d.days);
+    const min = Math.min(...days);
+    const max = Math.max(...days);
+    const mean = (days.reduce((a, b) => a + b, 0) / days.length).toFixed(1);
+    const rangeStr = min === max ? `${min} days` : `${min}–${max} days`;
+    return { count: list.length, min, max, mean, rangeStr };
+  };
+
+  const beforeBleed = calcBleedStats(beforeDurations);
+  const afterBleed = calcBleedStats(afterDurations);
+
+  let bleedDeltaSummary = 'Add start + end dates to compare bleeding duration';
+  let bleedDeltaClass = 'neutral';
+  if (beforeBleed && afterBleed) {
+    const diff = (parseFloat(afterBleed.mean) - parseFloat(beforeBleed.mean)).toFixed(1);
+    const diffText = diff === '0.0' ? 'Unchanged bleeding duration' : `${diff > 0 ? `+${diff}` : diff} days average bleeding`;
+    bleedDeltaSummary = diffText;
+    bleedDeltaClass = parseFloat(diff) <= 0 ? 'positive' : 'neutral';
+  }
+
+  const symptomEntries = entries.filter(e => e.type === 'symptom');
+  const symptomsMap = new Map();
+  symptomEntries.forEach(entry => {
+    const name = entry.title.trim();
+    if (!name) return;
+    const key = name.toLowerCase();
+    const curr = symptomsMap.get(key) || { name, before: 0, after: 0 };
+    if (entry.date <= marker.date) curr.before += 1;
+    else curr.after += 1;
+    symptomsMap.set(key, curr);
+  });
+
+  const symptomRows = [...symptomsMap.values()]
+    .sort((a, b) => (b.before + b.after) - (a.before + a.after));
+
+  const symptomsHTML = symptomRows.length ? `
+    <div class="symptom-shift-grid">
+      ${symptomRows.map(s => `
+        <div class="symptom-shift-badge">
+          <span>${escapeHTML(s.name)}</span>
+          <div class="symptom-shift-counts">
+            <span class="shift-before">${s.before}× before</span>
+            <span class="shift-arrow">→</span>
+            <span class="shift-after">${s.after}× after</span>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  ` : '<p class="empty-state" style="margin:8px 0 0">No symptoms recorded in check-ins around this period.</p>';
+
+  target.innerHTML = `
+    <div class="marker-pill-banner">
+      <div class="marker-pill-info">
+        <span class="tag amber">Milestone</span>
+        <strong>${escapeHTML(marker.title)}</strong>
+        <span class="marker-date">${formatDate(marker.date, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+      </div>
+      <div class="marker-detail-note">${escapeHTML(marker.detail || 'Context recorded by you')}</div>
+    </div>
+
+    <div class="explorer-metrics-grid">
+      <div class="explorer-stat-card">
+        <div>
+          <div class="stat-header">
+            <span class="stat-icon">⌁</span>
+            <strong>Cycle Length &amp; Variation</strong>
+          </div>
+          <div class="stat-split">
+            <div class="split-col before">
+              <span class="col-tag">Before (${beforeCycle ? `${beforeCycle.count} cycle${beforeCycle.count === 1 ? '' : 's'}` : '0 cycles'})</span>
+              <div class="col-value">${beforeCycle ? beforeCycle.rangeStr : '—'}</div>
+              <small class="col-sub">${beforeCycle ? `Avg: ${beforeCycle.mean}d · Spread: ±${beforeCycle.spread}d` : 'No intervals recorded'}</small>
+            </div>
+            <div class="split-col after">
+              <span class="col-tag">After (${afterCycle ? `${afterCycle.count} cycle${afterCycle.count === 1 ? '' : 's'}` : '0 cycles'})</span>
+              <div class="col-value">${afterCycle ? afterCycle.rangeStr : '—'}</div>
+              <small class="col-sub">${afterCycle ? `Avg: ${afterCycle.mean}d · Spread: ±${afterCycle.spread}d` : 'No intervals recorded'}</small>
+            </div>
+          </div>
+        </div>
+        <div class="stat-delta ${cycleDeltaClass}">
+          <span>✦</span> ${cycleDeltaSummary}
+        </div>
+      </div>
+
+      <div class="explorer-stat-card">
+        <div>
+          <div class="stat-header">
+            <span class="stat-icon">◈</span>
+            <strong>Bleeding Duration</strong>
+          </div>
+          <div class="stat-split">
+            <div class="split-col before">
+              <span class="col-tag">Before (${beforeBleed ? `${beforeBleed.count} period${beforeBleed.count === 1 ? '' : 's'}` : '0 periods'})</span>
+              <div class="col-value">${beforeBleed ? beforeBleed.rangeStr : '—'}</div>
+              <small class="col-sub">${beforeBleed ? `Avg: ${beforeBleed.mean} days` : 'No start/end pairs'}</small>
+            </div>
+            <div class="split-col after">
+              <span class="col-tag">After (${afterBleed ? `${afterBleed.count} period${afterBleed.count === 1 ? '' : 's'}` : '0 periods'})</span>
+              <div class="col-value">${afterBleed ? afterBleed.rangeStr : '—'}</div>
+              <small class="col-sub">${afterBleed ? `Avg: ${afterBleed.mean} days` : 'No start/end pairs'}</small>
+            </div>
+          </div>
+        </div>
+        <div class="stat-delta ${bleedDeltaClass}">
+          <span>✦</span> ${bleedDeltaSummary}
+        </div>
+      </div>
+    </div>
+
+    <div class="explorer-symptoms-section">
+      <div class="stat-header" style="margin-bottom:0">
+        <span class="stat-icon">✦</span>
+        <strong>Symptoms Reported Around This Change</strong>
+      </div>
+      ${symptomsHTML}
+    </div>
+
+    <div class="callout explorer-callout">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:6px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg>
+      <strong>Observation note:</strong> This comparison reflects observed timing in your personal journal. It describes how your entries varied before and after this milestone date; it does not infer medical cause or effect.
+    </div>
+  `;
+}
+
+let currentSymptomView = 'timing';
+
+function switchSymptomView(mode) {
+  currentSymptomView = mode;
+  const tabTiming = document.getElementById('symTabTiming');
+  const tabCounts = document.getElementById('symTabCounts');
+  if (tabTiming && tabCounts) {
+    tabTiming.classList.toggle('active', mode === 'timing');
+    tabCounts.classList.toggle('active', mode === 'counts');
+  }
+  renderSymptomPatterns();
+}
+
+function getSymptomTiming(entry, starts, averageCycleLength = 30) {
+  const eDay = dayNumber(entry.date);
+  const prevStart = [...starts].reverse().find(s => dayNumber(s.date) <= eDay);
+  const nextStart = starts.find(s => dayNumber(s.date) > eDay);
+
+  let cycleDay = null;
+  let daysBeforeNext = null;
+  let phaseName = 'Unlinked (no cycle starts)';
+  let phaseSlug = 'unlinked';
+  let percentage = 50;
+
+  if (prevStart) {
+    cycleDay = eDay - dayNumber(prevStart.date) + 1;
+    const estimatedLen = nextStart ? (dayNumber(nextStart.date) - dayNumber(prevStart.date)) : averageCycleLength;
+    percentage = Math.min(100, Math.max(0, Math.round((cycleDay / Math.max(1, estimatedLen)) * 100)));
+  }
+
+  if (nextStart) {
+    daysBeforeNext = dayNumber(nextStart.date) - eDay;
+  }
+
+  if (daysBeforeNext !== null && daysBeforeNext <= 7 && daysBeforeNext >= 1) {
+    phaseName = daysBeforeNext <= 3 ? 'Pre-menstrual (1–3d before)' : 'Late luteal (4–7d before)';
+    phaseSlug = 'pre-menstrual';
+  } else if (cycleDay !== null) {
+    if (cycleDay <= 5) {
+      phaseName = 'Menstrual phase (Days 1–5)';
+      phaseSlug = 'menstrual';
+    } else if (cycleDay >= 12 && cycleDay <= 17) {
+      phaseName = 'Mid-cycle / Ovulatory (Days 12–17)';
+      phaseSlug = 'mid-cycle';
+    } else if (cycleDay < 12) {
+      phaseName = 'Follicular phase (Days 6–11)';
+      phaseSlug = 'follicular';
+    } else {
+      phaseName = `Luteal phase (Cycle Day ${cycleDay})`;
+      phaseSlug = 'luteal';
+    }
+  }
+
+  return { cycleDay, daysBeforeNext, phaseName, phaseSlug, percentage, prevStart, nextStart };
 }
 
 function renderSymptomPatterns() {
-  const grouped = new Map();
-  entries.filter(entry => entry.type === 'symptom').forEach(entry => {
-    const key = entry.title.trim();
-    if (key) grouped.set(key, (grouped.get(key) || 0) + 1);
-  });
-  const items = [...grouped.entries()].sort((a, b) => b[1] - a[1]);
   const target = document.getElementById('symptomPatterns');
-  target.innerHTML = items.length ? items.map(([name, count]) => `<div class="report-row"><div><strong>${escapeHTML(name)}</strong><small>Logged ${count} time${count === 1 ? '' : 's'}</small></div><span class="tag plum">${count}</span></div>`).join('')
-    : '<p class="empty-state">Symptoms mentioned in reviewed check-ins will appear here as dated entries.</p>';
+  if (!target) return;
+
+  const symptomEntries = entries.filter(entry => entry.type === 'symptom');
+  if (!symptomEntries.length) {
+    target.innerHTML = '<p class="empty-state">Symptoms mentioned in check-ins will appear here with cycle phase analysis.</p>';
+    return;
+  }
+
+  const starts = periodStarts();
+  const intervals = cycleIntervals();
+  const averageCycle = intervals.length
+    ? Math.round(intervals.reduce((a, b) => a + b.days, 0) / intervals.length)
+    : 30;
+
+  const grouped = new Map();
+  symptomEntries.forEach(entry => {
+    const name = entry.title.trim();
+    if (!name) return;
+    const key = name.toLowerCase();
+    const timing = getSymptomTiming(entry, starts, averageCycle);
+    const item = grouped.get(key) || { name, count: 0, timings: [], entries: [] };
+    item.count += 1;
+    item.timings.push(timing);
+    item.entries.push(entry);
+    grouped.set(key, item);
+  });
+
+  const items = [...grouped.values()].sort((a, b) => b.count - a.count);
+
+  if (currentSymptomView === 'counts') {
+    target.innerHTML = items.map(({ name, count }) => `
+      <div class="report-row">
+        <div>
+          <strong>${escapeHTML(name)}</strong>
+          <small>Logged ${count} time${count === 1 ? '' : 's'}</small>
+        </div>
+        <span class="tag plum">${count}</span>
+      </div>
+    `).join('');
+    return;
+  }
+
+  target.innerHTML = `
+    <div class="symptom-timing-list">
+      ${items.map(({ name, count, timings, entries: itemEntries }) => {
+        const phaseCounts = new Map();
+        timings.forEach(t => phaseCounts.set(t.phaseSlug, (phaseCounts.get(t.phaseSlug) || 0) + 1));
+        const [topPhaseSlug, topPhaseCount] = [...phaseCounts.entries()].sort((a, b) => b[1] - a[1])[0] || ['unlinked', 0];
+        const dominantTiming = timings.find(t => t.phaseSlug === topPhaseSlug) || timings[0];
+        const percentInPhase = Math.round((topPhaseCount / count) * 100);
+
+        const markersHTML = timings.map(t =>
+          `<div class="cycle-track-marker" style="left:${t.percentage}%" title="${escapeHTML(name)}: Day ${t.cycleDay || '?'} (${t.phaseName})"></div>`
+        ).join('');
+
+        const entriesBullets = itemEntries.map((e, idx) => {
+          const t = timings[idx];
+          const cycleLabel = t.cycleDay ? `Cycle Day ${t.cycleDay}` : 'Unlinked';
+          const preLabel = t.daysBeforeNext !== null ? `(${t.daysBeforeNext}d before next period)` : '';
+          return `<div class="symptom-entry-bullet">
+            <span><strong>${formatDate(e.date)}</strong>: ${cycleLabel} ${preLabel}</span>
+            <span style="font-style:italic">${escapeHTML(e.detail && e.detail !== 'Added by you' ? e.detail : '')}</span>
+          </div>`;
+        }).join('');
+
+        return `
+          <div class="symptom-timing-item">
+            <div class="symptom-timing-top">
+              <div class="symptom-timing-name">
+                ${escapeHTML(name)}
+                <span class="tag plum" style="font-size:11px">${count}×</span>
+              </div>
+              <div class="symptom-timing-meta">
+                <span class="phase-pill ${topPhaseSlug}">${dominantTiming.phaseName.split('(')[0].trim()}</span>
+              </div>
+            </div>
+
+            <div class="symptom-phase-summary">
+              <strong>${percentInPhase}% of instances</strong> recorded in <em>${dominantTiming.phaseName}</em>.
+            </div>
+
+            <div class="symptom-cycle-track">
+              ${markersHTML}
+            </div>
+            <div class="cycle-track-labels">
+              <span>Day 1 (Period Start)</span>
+              <span>Mid-cycle (~Day 14)</span>
+              <span>Pre-menstrual (~Day ${averageCycle})</span>
+            </div>
+
+            <div class="symptom-entries-dropdown">
+              ${entriesBullets}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
 }
 
 function renderInsight() {
@@ -340,16 +872,17 @@ function renderRecordNotes() {
 }
 
 function render() {
-  const ordered = entries.slice().sort((a, b) => b.date.localeCompare(a.date));
-  document.getElementById('recentTimeline').innerHTML = timelineMarkup(ordered.slice(0, 4));
-  document.getElementById('fullTimeline').innerHTML = timelineMarkup(ordered);
-  document.getElementById('eventTotal').textContent = `${ordered.filter(entry => entry.type !== 'voice-source').length} entries`;
+  const allItems = getAllTimelineItems();
+  document.getElementById('recentTimeline').innerHTML = timelineMarkup(allItems.slice(0, 4));
+  renderTimelineOnly();
   renderStats();
+  renderCycleReadiness();
   renderCycleChart();
   renderChangeComparison();
   renderSymptomPatterns();
   renderInsight();
   renderRecordNotes();
+  renderClinicianBrief();
   document.getElementById('recordSummaryCount').textContent = `${documents.length} file${documents.length === 1 ? '' : 's'} · ${entries.filter(entry => entry.type === 'record').length} note${entries.filter(entry => entry.type === 'record').length === 1 ? '' : 's'}`;
 }
 
@@ -369,12 +902,21 @@ function setType(type) {
   const labels = { period: 'Log a period', symptom: 'Add a check-in', context: 'Mark a change', record: 'Add a note' };
   const options = {
     period: ['Period started', 'Period ended'],
-    symptom: ['Lower energy', 'Pelvic discomfort', 'Cramps', 'Sleep changes', 'Mood changes', 'Headache', 'Other'],
     context: ['Medication change', 'Routine change', 'Stressful period', 'Weight change', 'Clinician-recorded diagnosis', 'Other'],
     record: ['Clinician note', 'Test result note', 'Other note']
   };
+  const isSymptom = type === 'symptom';
   document.getElementById('modalTitle').textContent = labels[type];
-  document.getElementById('entryTitle').innerHTML = options[type].map(option => `<option>${escapeHTML(option)}</option>`).join('');
+  document.getElementById('titleField').hidden = isSymptom;
+  document.getElementById('chipField').hidden = !isSymptom;
+  if (isSymptom) {
+    selectedChips.clear();
+    document.getElementById('entryLabel').value = '';
+    renderChips();
+  } else {
+    document.getElementById('entryTitle').innerHTML =
+      options[type].map(option => `<option>${escapeHTML(option)}</option>`).join('');
+  }
 }
 
 function closeModal() {
@@ -384,6 +926,21 @@ function closeModal() {
 function saveEntry() {
   const date = document.getElementById('entryDate').value;
   if (!date) return toast('Choose a date first');
+  if (currentType === 'symptom') {
+    const labels = [...selectedChips];
+    document.getElementById('entryLabel').value.split(',')
+      .map(s => s.trim()).filter(Boolean)
+      .forEach(t => { if (!labels.some(l => l.toLowerCase() === t.toLowerCase())) labels.push(t); });
+    if (!labels.length) return toast('Pick a symptom or type what you felt');
+    const detail = document.getElementById('entryDetail').value.trim() || 'Added by you';
+    labels.forEach(label => entries.push({
+      schemaVersion: CURRENT_SCHEMA_VERSION, id: newID(), date, type: 'symptom',
+      title: label, category: categoryFor(label), detail
+    }));
+    saveAndRender();
+    closeModal();
+    return toast(labels.length === 1 ? 'Saved to your timeline' : `${labels.length} check-ins saved`);
+  }
   entries.push({
     id: newID(), date, type: currentType,
     title: document.getElementById('entryTitle').value,
@@ -480,7 +1037,10 @@ function showVoiceReview(note) {
   document.getElementById('reviewText').value = note;
   refreshVoiceEvents();
   document.getElementById('voiceReview').classList.add('show');
-  document.getElementById('voiceStatus').textContent = 'Check the dates and details. You can change or remove any suggestion.';
+  document.getElementById('addAsNote').checked = voiceDraft.length === 0;
+  document.getElementById('voiceStatus').textContent = voiceDraft.length
+    ? 'Check the dates and details. You can change or remove any suggestion.'
+    : "I couldn't pick out dated details. Tick the box below to keep this note on your timeline.";
   document.getElementById('voiceReview').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
@@ -564,6 +1124,13 @@ function saveVoiceEntry() {
     });
   });
 
+  if (document.getElementById('addAsNote')?.checked) {
+    entries.push({
+      schemaVersion: CURRENT_SCHEMA_VERSION, id: newID(), sourceId, date: noteDate,
+      type: 'record', title: 'Check-in note', detail: note
+    });
+  }
+
   persistVoiceNotes();
   saveAndRender();
   document.getElementById('voiceText').value = '';
@@ -592,8 +1159,14 @@ function generateSummary() {
     .map(entry => `• ${formatDate(entry.date)} — ${entry.title}${entry.detail && entry.detail !== 'Added by you' ? `: ${entry.detail}` : ''}`);
   const spokenNotes = voiceNotes.slice().reverse()
     .map(note => `• ${formatDate(note.date)} — “${note.text}”`);
-  const selectedDocuments = documents.filter(document => document.includeInSummary && document.notes.trim());
-  const recordNotes = selectedDocuments.map(document => `• ${document.name}${document.recordDate ? ` (${formatDate(document.recordDate)})` : ''} — ${document.notes}`);
+  const selectedDocuments = documents.filter(document => document.includeInSummary && ((document.notes && document.notes.trim()) || (document.keyFinding && document.keyFinding.trim())));
+  const recordNotes = selectedDocuments.map(document => {
+    const parts = [];
+    if (document.category) parts.push(`[${document.category}]`);
+    if (document.keyFinding) parts.push(`Key: ${document.keyFinding}`);
+    if (document.notes) parts.push(document.notes);
+    return `• ${document.name}${document.recordDate ? ` (${formatDate(document.recordDate)})` : ''} — ${parts.join(' · ') || 'Included'}`;
+  });
   const analysis = analyze(entries, { today: localISODate(), rules: RULES });
   const flagLines = analysis.flags.length
     ? analysis.flags.map(f => `• ${f.title}: ${f.message}`)
@@ -627,6 +1200,233 @@ async function copySummary() {
     toast('Summary copied');
   }
 }
+
+function renderClinicianBrief() {
+  const container = document.getElementById('clinicalBriefContent');
+  if (!container) return;
+
+  const starts = periodStarts();
+  const intervals = cycleIntervals();
+  const durations = bleedingDurations();
+  const analysis = analyze(entries, { today: localISODate(), rules: RULES });
+
+  const earliestDate = starts.length ? starts[0].date : localISODate();
+  const latestDate = starts.length ? starts[starts.length - 1].date : localISODate();
+
+  let freqValue = '—';
+  let freqSub = 'Insufficient data';
+  let freqStatus = { text: 'Need 2+ starts', class: 'info' };
+  if (analysis.summary) {
+    freqValue = `${analysis.summary.min}–${analysis.summary.max} d`;
+    freqSub = `Across last ${analysis.basedOnCycles} cycles`;
+    const isNormal = analysis.summary.min >= 24 && analysis.summary.max <= 38;
+    freqStatus = isNormal
+      ? { text: 'Normal frequency (24–38d)', class: 'normal' }
+      : { text: analysis.summary.max > 38 ? 'Infrequent / Variable (>38d)' : 'Frequent (<24d)', class: 'attention' };
+  } else if (intervals.length) {
+    const min = Math.min(...intervals.map(i => i.days));
+    const max = Math.max(...intervals.map(i => i.days));
+    freqValue = `${min}–${max} d`;
+    freqSub = `${intervals.length} recorded interval${intervals.length === 1 ? '' : 's'}`;
+  }
+
+  let spreadValue = '—';
+  let spreadSub = 'Difference (max - min)';
+  let spreadStatus = { text: 'Pending data', class: 'info' };
+  if (analysis.summary) {
+    spreadValue = `±${analysis.summary.spread} days`;
+    spreadSub = 'Spread between shortest & longest';
+    spreadStatus = analysis.summary.spread <= 9
+      ? { text: 'Regular spread (≤9 days)', class: 'normal' }
+      : { text: `Irregular spread (${analysis.summary.spread}d > 9d)`, class: 'attention' };
+  }
+
+  let bleedValue = '—';
+  let bleedSub = 'Start to end duration';
+  let bleedStatus = { text: 'Need start + end dates', class: 'info' };
+  if (durations.length) {
+    const minD = Math.min(...durations.map(d => d.days));
+    const maxD = Math.max(...durations.map(d => d.days));
+    bleedValue = minD === maxD ? `${minD} days` : `${minD}–${maxD} days`;
+    bleedSub = `Based on ${durations.length} recorded period${durations.length === 1 ? '' : 's'}`;
+    bleedStatus = maxD <= 8
+      ? { text: 'Normal duration (≤8 days)', class: 'normal' }
+      : { text: 'Prolonged bleeding (>8 days)', class: 'attention' };
+  }
+
+  let gapValue = '—';
+  let gapSub = 'Days since last start';
+  let gapStatus = { text: 'No starts logged', class: 'info' };
+  if (starts.length) {
+    const lastStart = starts[starts.length - 1].date;
+    const daysSince = Math.max(0, Math.round((Date.now() - Date.parse(`${lastStart}T12:00:00`)) / 86400000));
+    gapValue = `${daysSince} days`;
+    gapSub = `Since ${formatDate(lastStart)}`;
+    gapStatus = daysSince > 90
+      ? { text: 'Prolonged gap (>90d)', class: 'attention' }
+      : { text: daysSince > 38 ? 'Current cycle length extended' : 'Current cycle in progress', class: daysSince > 38 ? 'attention' : 'normal' };
+  }
+
+  const contextMarkers = entries.filter(e => e.type === 'context').sort((a, b) => b.date.localeCompare(a.date));
+  let interventionHTML = '<p class="empty-state">No medical or lifestyle context markers logged yet.</p>';
+  if (contextMarkers.length) {
+    const rows = contextMarkers.map(m => {
+      const before = intervals.filter(i => i.end.date <= m.date).map(i => i.days);
+      const after = intervals.filter(i => i.start.date >= m.date).map(i => i.days);
+      const beforeStr = before.length ? `${Math.min(...before)}–${Math.max(...before)} d (n=${before.length})` : '—';
+      const afterStr = after.length ? `${Math.min(...after)}–${Math.max(...after)} d (n=${after.length})` : '—';
+      return `<tr>
+        <td><strong>${escapeHTML(m.title)}</strong><br><small style="color:var(--muted)">${formatDate(m.date)} · ${escapeHTML(m.detail || 'Marked by you')}</small></td>
+        <td>${beforeStr}</td>
+        <td>${afterStr}</td>
+      </tr>`;
+    }).join('');
+    interventionHTML = `<table class="brief-table">
+      <thead><tr><th>Context Marker</th><th>Cycle Range Before</th><th>Cycle Range After</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  }
+
+  const groupedSymptoms = new Map();
+  entries.filter(e => e.type === 'symptom').forEach(e => {
+    const name = e.title.trim();
+    if (!name) return;
+    const key = name.toLowerCase();
+    const curr = groupedSymptoms.get(key);
+    groupedSymptoms.set(key, { name: curr?.name || name, count: (curr?.count || 0) + 1 });
+  });
+  const topSymptoms = [...groupedSymptoms.values()].sort((a, b) => b.count - a.count);
+  const symptomsHTML = topSymptoms.length
+    ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${topSymptoms.map(s => `<span class="tag plum" style="font-size:12px;padding:4px 10px">${escapeHTML(s.name)} <strong>(${s.count}×)</strong></span>`).join('')}</div>`
+    : '<p class="empty-state">No symptoms recorded yet.</p>';
+
+  const selectedDocs = documents.filter(d => d.includeInSummary && ((d.notes && d.notes.trim()) || (d.keyFinding && d.keyFinding.trim())));
+  const docsHTML = selectedDocs.length
+    ? `<ul style="margin:8px 0 0 18px;padding:0;font-size:13px;color:var(--ink)">${selectedDocs.map(d => `<li style="margin-bottom:6px"><strong>${escapeHTML(d.name)}</strong>${d.category ? ` <span class="tag lab-tag" style="font-size:10px;padding:2px 7px">${escapeHTML(d.category)}</span>` : ''}${d.recordDate ? ` (${formatDate(d.recordDate)})` : ''}: ${d.keyFinding ? `<span style="color:#0369a1;font-weight:600">${escapeHTML(d.keyFinding)}</span>${d.notes ? ' · ' : ''}` : ''}${escapeHTML(d.notes || '')}</li>`).join('')}</ul>`
+    : '<p class="empty-state">No document notes selected for this appointment.</p>';
+
+  const questions = [];
+  if (analysis.flags.some(f => f.id === 'variable_cycles' || f.id === 'long_cycles')) {
+    questions.push(`“My recorded cycle lengths vary by ${analysis.summary ? analysis.summary.spread : '>9'} days. Would you recommend blood work (e.g. TSH, prolactin, free testosterone) or a pelvic ultrasound to investigate potential hormonal factors?”`);
+  }
+  if (analysis.flags.some(f => f.id === 'long_bleeding')) {
+    questions.push('“My bleeding duration has reached over 8 days on several cycles. What could be contributing to prolonged bleeding, and should we evaluate for iron deficiency or polyps?”');
+  }
+  if (analysis.flags.some(f => f.id === 'long_gap')) {
+    questions.push(`“It has been over 90 days since my last period start. What is the standard protocol for inducing a cycle or investigating secondary amenorrhea?”`);
+  }
+  if (contextMarkers.length) {
+    questions.push(`“I recorded ${contextMarkers[0].title} on ${formatDate(contextMarkers[0].date)}. Could there be any connection between this shift and the cycle variance I'm seeing?”`);
+  }
+  if (!questions.length) {
+    questions.push('“Given my recorded cycle range and symptoms, are there any preventive screenings or baseline tests you recommend discussing today?”');
+  }
+
+  const questionsHTML = `<div class="question-list">${questions.map((q, idx) => `<div class="question-item"><span class="question-num">Q${idx + 1}</span><span>${escapeHTML(q)}</span></div>`).join('')}</div>`;
+
+  container.innerHTML = `
+    <div class="brief-header">
+      <div class="brief-header-top">
+        <div>
+          <span style="font-size:11px;font-weight:700;letter-spacing:1px;color:var(--plum);text-transform:uppercase">Cycle Context · Clinical Consultation Brief</span>
+          <h2>Patient Cycle &amp; Symptom Summary</h2>
+        </div>
+        <div class="brief-meta">
+          <strong>Prepared:</strong> ${formatDate(localISODate())}<br>
+          <strong>Observation Window:</strong> ${formatDate(earliestDate)} – ${formatDate(latestDate)} (${starts.length} period start${starts.length === 1 ? '' : 's'})
+        </div>
+      </div>
+      <div class="brief-disclaimer">
+        <strong>Note for Healthcare Provider:</strong> This brief is compiled directly from personal health journals kept by the patient on their device. Cycle variation and duration metrics are benchmarked against FIGO (International Federation of Gynecology and Obstetrics) 2018 clinical definitions to assist in your evaluation. It does not contain automated diagnoses or algorithmic treatments.
+      </div>
+    </div>
+
+    <div class="brief-section">
+      <div class="brief-section-title">1. FIGO Menstrual History Metrics</div>
+      <div class="clinical-grid">
+        <div class="clinical-metric-card">
+          <div>
+            <div class="clinical-metric-label">Cycle Frequency</div>
+            <div class="clinical-metric-value">${freqValue}</div>
+            <div class="clinical-metric-sub">${freqSub}</div>
+          </div>
+          <span class="clinical-status-pill ${freqStatus.class}">${freqStatus.text}</span>
+        </div>
+        <div class="clinical-metric-card">
+          <div>
+            <div class="clinical-metric-label">Regularity Spread</div>
+            <div class="clinical-metric-value">${spreadValue}</div>
+            <div class="clinical-metric-sub">${spreadSub}</div>
+          </div>
+          <span class="clinical-status-pill ${spreadStatus.class}">${spreadStatus.text}</span>
+        </div>
+        <div class="clinical-metric-card">
+          <div>
+            <div class="clinical-metric-label">Bleeding Duration</div>
+            <div class="clinical-metric-value">${bleedValue}</div>
+            <div class="clinical-metric-sub">${bleedSub}</div>
+          </div>
+          <span class="clinical-status-pill ${bleedStatus.class}">${bleedStatus.text}</span>
+        </div>
+        <div class="clinical-metric-card">
+          <div>
+            <div class="clinical-metric-label">Current Cycle Gap</div>
+            <div class="clinical-metric-value">${gapValue}</div>
+            <div class="clinical-metric-sub">${gapSub}</div>
+          </div>
+          <span class="clinical-status-pill ${gapStatus.class}">${gapStatus.text}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="brief-section">
+      <div class="brief-section-title">2. Context Milestones &amp; Interventions</div>
+      ${interventionHTML}
+    </div>
+
+    <div class="brief-section">
+      <div class="brief-section-title">3. Reported Symptoms Profile</div>
+      ${symptomsHTML}
+    </div>
+
+    <div class="brief-section">
+      <div class="brief-section-title">4. Medical Records &amp; Documents Selected</div>
+      ${docsHTML}
+    </div>
+
+    <div class="brief-section">
+      <div class="brief-section-title">5. Prepared Questions for Your Doctor</div>
+      ${questionsHTML}
+    </div>
+  `;
+}
+
+function switchSummaryView(mode) {
+  const briefBtn = document.getElementById('viewBriefBtn');
+  const rawBtn = document.getElementById('viewRawBtn');
+  const briefContainer = document.getElementById('briefViewContainer');
+  const rawContainer = document.getElementById('rawViewContainer');
+
+  if (mode === 'brief') {
+    briefBtn.classList.add('active');
+    rawBtn.classList.remove('active');
+    briefContainer.hidden = false;
+    rawContainer.hidden = true;
+    renderClinicianBrief();
+  } else {
+    rawBtn.classList.add('active');
+    briefBtn.classList.remove('active');
+    briefContainer.hidden = true;
+    rawContainer.hidden = false;
+    generateSummary();
+  }
+}
+
+function printSummary() {
+  renderClinicianBrief();
+  window.print();
+}
+
 
 function openDocumentDatabase() {
   if (databasePromise) return databasePromise;
@@ -706,6 +1506,7 @@ async function loadDocuments() {
     toast('Private document storage is not available in this browser');
   }
   renderDocuments();
+  renderTimelineOnly();
 }
 
 function formatFileSize(bytes) {
@@ -741,36 +1542,83 @@ function renderDocuments() {
     info.textContent = `${documentRecord.mime} · ${formatFileSize(documentRecord.size)} · added ${formatDate(documentRecord.uploadedAt)}`;
     heading.append(title, info);
 
+    const fieldsGrid = document.createElement('div');
+    fieldsGrid.className = 'document-record-fields';
+
+    const catLabel = document.createElement('label');
+    catLabel.textContent = 'Report category';
+    const catSelect = document.createElement('select');
+    const categories = [
+      'Blood / Hormone panel',
+      'Pelvic / Follicle Ultrasound',
+      'Clinician consultation note',
+      'Prescription / Medication',
+      'Pathology / Lab report',
+      'Other medical report'
+    ];
+    categories.forEach(cat => {
+      const opt = document.createElement('option');
+      opt.value = cat;
+      opt.textContent = cat;
+      if ((documentRecord.category || 'Blood / Hormone panel') === cat) opt.selected = true;
+      catSelect.append(opt);
+    });
+    catLabel.append(catSelect);
+
     const dateLabel = document.createElement('label');
     dateLabel.textContent = 'Date on report';
     const date = document.createElement('input');
     date.type = 'date';
     date.value = documentRecord.recordDate || '';
-    date.addEventListener('change', () => updateDocument(documentRecord.id, { recordDate: date.value }));
     dateLabel.append(date);
 
+    const findingLabel = document.createElement('label');
+    findingLabel.textContent = 'Key finding / value (optional)';
+    const findingInput = document.createElement('input');
+    findingInput.type = 'text';
+    findingInput.placeholder = 'e.g. TSH: 1.8 mIU/L, Follicles: 14';
+    findingInput.value = documentRecord.keyFinding || '';
+    findingLabel.append(findingInput);
+
+    fieldsGrid.append(catLabel, dateLabel, findingLabel);
+
     const noteLabel = document.createElement('label');
-    noteLabel.textContent = 'Your note about this document';
+    noteLabel.textContent = 'Your note or questions about this report';
     const note = document.createElement('textarea');
     note.value = documentRecord.notes || '';
-    note.placeholder = 'What would you like to remember or discuss?';
-    note.addEventListener('input', () => { documentRecord.notes = note.value; });
+    note.placeholder = 'What would you like to remember or discuss with your doctor?';
     noteLabel.append(note);
 
+    const checkContainer = document.createElement('div');
+    checkContainer.className = 'document-record-checkboxes';
+
+    const timelineLabel = document.createElement('label');
+    const timelineCheck = document.createElement('input');
+    timelineCheck.type = 'checkbox';
+    timelineCheck.checked = documentRecord.showOnTimeline !== false;
+    timelineLabel.append(timelineCheck, document.createTextNode('Show on cycle timeline'));
+
     const summaryLabel = document.createElement('label');
-    summaryLabel.className = 'include-record';
-    const include = document.createElement('input');
-    include.type = 'checkbox';
-    include.checked = Boolean(documentRecord.includeInSummary);
-    include.addEventListener('change', () => updateDocument(documentRecord.id, { includeInSummary: include.checked }));
-    summaryLabel.append(include, document.createTextNode('Include my note in the appointment summary'));
+    const summaryCheck = document.createElement('input');
+    summaryCheck.type = 'checkbox';
+    summaryCheck.checked = Boolean(documentRecord.includeInSummary);
+    summaryLabel.append(summaryCheck, document.createTextNode('Include in clinician appointment brief'));
+
+    checkContainer.append(timelineLabel, summaryLabel);
 
     const actions = document.createElement('div');
     actions.className = 'document-actions';
     const save = document.createElement('button');
     save.className = 'btn';
-    save.textContent = 'Save note';
-    save.addEventListener('click', () => updateDocument(documentRecord.id, { notes: note.value, recordDate: date.value }));
+    save.textContent = 'Save changes';
+    save.addEventListener('click', () => updateDocument(documentRecord.id, {
+      category: catSelect.value,
+      recordDate: date.value,
+      keyFinding: findingInput.value.trim(),
+      notes: note.value.trim(),
+      showOnTimeline: timelineCheck.checked,
+      includeInSummary: summaryCheck.checked
+    }));
     const download = document.createElement('button');
     download.className = 'text-button';
     download.textContent = 'Download original';
@@ -780,7 +1628,7 @@ function renderDocuments() {
     remove.textContent = 'Remove';
     remove.addEventListener('click', () => removeDocument(documentRecord.id));
     actions.append(save, download, remove);
-    article.append(heading, dateLabel, noteLabel, summaryLabel, actions);
+    article.append(heading, fieldsGrid, noteLabel, checkContainer, actions);
     list.append(article);
   });
 }
@@ -792,7 +1640,14 @@ async function updateDocument(id, changes) {
   await putDocument({ ...documentRecord, ...changes });
   documents = documents.map(item => item.id === id ? documentRecord : item);
   renderDocuments();
+  renderTimelineOnly();
+  renderClinicianBrief();
   toast('Document record saved on this device');
+}
+
+async function downloadDocumentById(id) {
+  const documentRecord = documents.find(item => item.id === id);
+  if (documentRecord) await downloadDocument(documentRecord);
 }
 
 async function downloadDocument(documentRecord) {
@@ -858,12 +1713,19 @@ Object.assign(window, {
   closeModal,
   saveEntry,
   setType,
+  toggleChip,
   toggleRecording,
   reviewTypedCheckin,
   addVoiceEvent,
   saveVoiceEntry,
   generateSummary,
   copySummary,
+  switchSummaryView,
+  printSummary,
+  selectChangeMarker,
+  switchSymptomView,
+  filterTimeline,
+  downloadDocumentById,
   resetData,
   handleDocumentFiles,
   removeDocument
