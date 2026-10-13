@@ -1746,6 +1746,7 @@ main {
 }
 .question-item {
   display: flex;
+  align-items: flex-start;
   gap: 12px;
   background: #fafaf7;
   border: 1px solid var(--line);
@@ -1754,17 +1755,163 @@ main {
   font-size: 13px;
   line-height: 1.5;
   color: var(--ink);
+  transition: all 0.15s ease;
 }
-.question-num {
-  font-weight: 700;
+.question-item.disabled {
+  opacity: 0.55;
+  background: #f1f5f9;
+}
+.question-check-wrap {
+  display: flex;
+  align-items: center;
+  padding-top: 2px;
+}
+.question-check-wrap input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--plum);
+}
+.question-content-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.question-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+.question-remove-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 16px;
+  line-height: 1;
+}
+.question-remove-btn:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+.add-question-box {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.add-question-box input {
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: #fff;
+}
+.add-question-box input:focus {
+  outline: none;
+  border-color: var(--plum);
+  box-shadow: 0 0 0 2px var(--plum-pale);
+}
+
+/* Summary Timeframe Observation Filter */
+.summary-filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+.summary-filter-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.summary-filter-title {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: var(--ink);
+}
+.summary-range-tag {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 11px;
   color: var(--plum);
-  flex-shrink: 0;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+.summary-preset-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.filter-chip {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.filter-chip:hover {
+  border-color: var(--plum);
+  color: var(--ink);
+}
+.filter-chip.active {
+  background: var(--plum);
+  border-color: var(--plum);
+  color: #fff;
+  font-weight: 600;
+}
+.summary-custom-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.custom-date-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.custom-date-field label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.custom-date-field input[type="date"] {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: #fff;
+  color: var(--ink);
 }
 
 /* Print Stylesheet */
 @media print {
-  body { background: #fff !important; color: #000 !important; font-size: 12pt; }
-  aside, .topbar, .header-actions, .summary-view-toggle, .appointment-toolbar, .toast, .modal-backdrop, [hidden] {
+  body { background: #fff !important; color: #000 !important; font-size: 11pt; }
+  aside, .topbar, .header-actions, .summary-view-toggle, .summary-filter-bar, .appointment-toolbar, .toast, .modal-backdrop, .add-question-box, .question-remove-btn, [hidden] {
     display: none !important;
   }
   .shell { display: block !important; }
@@ -1788,6 +1935,9 @@ main {
     border: 1px solid #ccc !important;
     background: #fff !important;
     break-inside: avoid;
+  }
+  .question-item.disabled {
+    display: none !important;
   }
 }
 

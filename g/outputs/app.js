@@ -16,6 +16,8 @@ const SAMPLE_ENTRIES = [
 
 const ENTRY_KEY = 'cycleContextEntries';
 const VOICE_KEY = 'cycleContextVoiceNotes';
+const CUSTOM_QUESTIONS_KEY = 'cycleContextCustomQuestions';
+const DISABLED_QUESTIONS_KEY = 'cycleContextDisabledQuestions';
 const DOCUMENT_DB = 'cycle-context-private-records';
 const DOCUMENT_STORE = 'documents';
 const DOCUMENT_FILE_STORE = 'document-files';
@@ -23,12 +25,26 @@ const MAX_FILE_SIZE = 25 * 1024 * 1024;
 
 let entries = readJSON(ENTRY_KEY, SAMPLE_ENTRIES);
 let voiceNotes = readJSON(VOICE_KEY, []);
+let customQuestions = readJSON(CUSTOM_QUESTIONS_KEY, []);
+let disabledQuestionIds = new Set(readJSON(DISABLED_QUESTIONS_KEY, []));
 let currentType = 'period';
 let voiceDraft = [];
 let recognition = null;
 let isRecording = false;
 let documents = [];
 let databasePromise;
+
+let currentSummaryRange = 'all'; // 'all' | '3m' | '6m' | '12m' | 'custom'
+let summaryCustomStart = null;
+let summaryCustomEnd = null;
+
+function persistCustomQuestions() {
+  localStorage.setItem(CUSTOM_QUESTIONS_KEY, JSON.stringify(customQuestions));
+}
+
+function persistDisabledQuestions() {
+  localStorage.setItem(DISABLED_QUESTIONS_KEY, JSON.stringify(Array.from(disabledQuestionIds)));
+}
 
 const symptomTerms = [
   ['Cramps', ['cramps', 'cramp', 'crampy']],
@@ -290,13 +306,13 @@ function renderTimelineOnly() {
   }
 }
 
-function periodStarts() {
-  return entries.filter(entry => entry.type === 'period' && (entry.periodRole === 'start' || entry.title === 'Period started'))
+function periodStarts(list = entries) {
+  return list.filter(entry => entry.type === 'period' && (entry.periodRole === 'start' || entry.title === 'Period started'))
     .slice().sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function cycleIntervals() {
-  const starts = periodStarts();
+function cycleIntervals(list = entries) {
+  const starts = periodStarts(list);
   return starts.slice(1).map((entry, index) => ({
     days: dayNumber(entry.date) - dayNumber(starts[index].date),
     start: starts[index],
@@ -304,9 +320,9 @@ function cycleIntervals() {
   })).filter(interval => interval.days >= 15 && interval.days < 200);
 }
 
-function bleedingDurations() {
-  const starts = periodStarts();
-  const ends = entries.filter(entry => entry.type === 'period' && (entry.periodRole === 'end' || entry.title === 'Period ended'))
+function bleedingDurations(list = entries) {
+  const starts = periodStarts(list);
+  const ends = list.filter(entry => entry.type === 'period' && (entry.periodRole === 'end' || entry.title === 'Period ended'))
     .slice().sort((a, b) => a.date.localeCompare(b.date));
   return starts.flatMap((start, index) => {
     const nextStart = starts[index + 1]?.date;
@@ -1394,25 +1410,229 @@ function saveVoiceEntry() {
   toast('Check-in and dated details saved');
 }
 
+function setSummaryRange(range) {
+  currentSummaryRange = range;
+  document.querySelectorAll('.summary-preset-chips .filter-chip').forEach(chip => {
+    chip.classList.toggle('active', chip.dataset.range === range);
+  });
+  const customRow = document.getElementById('summaryCustomRow');
+  if (customRow) {
+    customRow.style.display = range === 'custom' ? 'flex' : 'none';
+  }
+  updateSummaryFilterUI();
+  renderClinicianBrief();
+  generateSummary();
+}
+
+function applyCustomSummaryDates() {
+  const startEl = document.getElementById('summaryCustomStart');
+  const endEl = document.getElementById('summaryCustomEnd');
+  summaryCustomStart = startEl ? startEl.value : null;
+  summaryCustomEnd = endEl ? endEl.value : null;
+  updateSummaryFilterUI();
+  renderClinicianBrief();
+  generateSummary();
+}
+
+function clearCustomSummaryDates() {
+  const startEl = document.getElementById('summaryCustomStart');
+  const endEl = document.getElementById('summaryCustomEnd');
+  if (startEl) startEl.value = '';
+  if (endEl) endEl.value = '';
+  summaryCustomStart = null;
+  summaryCustomEnd = null;
+  setSummaryRange('all');
+}
+
+function getSummaryDateBounds() {
+  let minDate = null;
+  let maxDate = localISODate();
+
+  if (currentSummaryRange === '3m') {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 3);
+    minDate = localISODate(d);
+  } else if (currentSummaryRange === '6m') {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 6);
+    minDate = localISODate(d);
+  } else if (currentSummaryRange === '12m') {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 1);
+    minDate = localISODate(d);
+  } else if (currentSummaryRange === 'custom') {
+    minDate = summaryCustomStart;
+    maxDate = summaryCustomEnd || localISODate();
+  }
+
+  return { minDate, maxDate };
+}
+
+function getFilteredSummaryEntries() {
+  if (currentSummaryRange === 'all') return entries;
+  const { minDate, maxDate } = getSummaryDateBounds();
+  return entries.filter(e => {
+    if (minDate && e.date < minDate) return false;
+    if (maxDate && e.date > maxDate) return false;
+    return true;
+  });
+}
+
+function getFilteredSummaryDocuments() {
+  if (currentSummaryRange === 'all') return documents;
+  const { minDate, maxDate } = getSummaryDateBounds();
+  return documents.filter(doc => {
+    if (!doc.recordDate) return true;
+    if (minDate && doc.recordDate < minDate) return false;
+    if (maxDate && doc.recordDate > maxDate) return false;
+    return true;
+  });
+}
+
+function updateSummaryFilterUI() {
+  const label = document.getElementById('summaryRangeLabel');
+  if (!label) return;
+  const filteredEntries = getFilteredSummaryEntries();
+  const startsCount = filteredEntries.filter(e => e.type === 'period' && (e.periodRole === 'start' || e.title === 'Period started')).length;
+
+  if (currentSummaryRange === 'all') {
+    label.textContent = `All logged history (${startsCount} period start${startsCount === 1 ? '' : 's'})`;
+  } else if (currentSummaryRange === '3m') {
+    label.textContent = `Past 3 months (${startsCount} start${startsCount === 1 ? '' : 's'})`;
+  } else if (currentSummaryRange === '6m') {
+    label.textContent = `Past 6 months (${startsCount} start${startsCount === 1 ? '' : 's'})`;
+  } else if (currentSummaryRange === '12m') {
+    label.textContent = `Past 1 year (${startsCount} start${startsCount === 1 ? '' : 's'})`;
+  } else if (currentSummaryRange === 'custom') {
+    label.textContent = `${summaryCustomStart ? formatDate(summaryCustomStart) : 'Earliest'} to ${summaryCustomEnd ? formatDate(summaryCustomEnd) : 'Today'} (${startsCount} start${startsCount === 1 ? '' : 's'})`;
+  }
+}
+
+function getConsolidatedQuestions(analysis, contextMarkers) {
+  const suggested = [];
+
+  if (analysis.populationComparison && (analysis.populationComparison.band === 'longer-90' || analysis.populationComparison.band === 'shorter-90')) {
+    suggested.push({
+      id: 'pop_outlier',
+      text: `“My median cycle length of ${analysis.populationComparison.userMedian} days sits outside the 5th–95th percentile benchmark seen in large published studies (23–38 days). What potential physiological or hormonal factors should we consider exploring?”`,
+      tag: 'Population Benchmark',
+      tagClass: 'plum'
+    });
+  }
+  if (analysis.flags.some(f => f.id === 'variable_cycles' || f.id === 'long_cycles')) {
+    suggested.push({
+      id: 'cycle_variance',
+      text: `“My recorded cycle lengths vary by ${analysis.summary ? analysis.summary.spread : '>9'} days. Would you recommend blood work (e.g. TSH, prolactin, free testosterone) or a pelvic ultrasound to investigate potential hormonal factors?”`,
+      tag: 'Clinical Regularity Flag',
+      tagClass: 'attention'
+    });
+  }
+  if (analysis.flags.some(f => f.id === 'long_bleeding')) {
+    suggested.push({
+      id: 'long_bleeding',
+      text: '“My bleeding duration has reached over 8 days on several cycles. What could be contributing to prolonged bleeding, and should we evaluate for iron deficiency or polyps?”',
+      tag: 'Clinical Bleeding Flag',
+      tagClass: 'attention'
+    });
+  }
+  if (analysis.flags.some(f => f.id === 'long_gap')) {
+    suggested.push({
+      id: 'long_gap',
+      text: '“It has been over 90 days since my last period start. What is the standard protocol for inducing a cycle or investigating secondary amenorrhea?”',
+      tag: 'Amenorrhea Check',
+      tagClass: 'attention'
+    });
+  }
+  if (contextMarkers.length) {
+    suggested.push({
+      id: 'context_shift',
+      text: `“I recorded ${contextMarkers[0].title} on ${formatDate(contextMarkers[0].date)}. Could there be any connection between this shift and the cycle variance I'm seeing?”`,
+      tag: 'Milestone Correlation',
+      tagClass: 'green'
+    });
+  }
+  if (!suggested.length) {
+    suggested.push({
+      id: 'general_baseline',
+      text: '“Given my recorded cycle range and symptoms, are there any preventive screenings or baseline tests you recommend discussing today?”',
+      tag: 'General Discussion',
+      tagClass: 'info'
+    });
+  }
+
+  const custom = customQuestions.map(q => ({
+    id: q.id,
+    text: q.text,
+    tag: 'Personal question',
+    tagClass: 'plum',
+    isCustom: true
+  }));
+
+  return [...custom, ...suggested];
+}
+
+function toggleQuestion(id) {
+  if (disabledQuestionIds.has(id)) {
+    disabledQuestionIds.delete(id);
+  } else {
+    disabledQuestionIds.add(id);
+  }
+  persistDisabledQuestions();
+  renderClinicianBrief();
+  generateSummary();
+}
+
+function addCustomQuestion() {
+  const input = document.getElementById('newQuestionInput');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  const newQ = { id: 'custom_' + Date.now(), text, date: localISODate() };
+  customQuestions.unshift(newQ);
+  persistCustomQuestions();
+  input.value = '';
+  renderClinicianBrief();
+  generateSummary();
+  toast('Question added to your agenda');
+}
+
+function removeCustomQuestion(id) {
+  customQuestions = customQuestions.filter(q => q.id !== id);
+  disabledQuestionIds.delete(id);
+  persistCustomQuestions();
+  persistDisabledQuestions();
+  renderClinicianBrief();
+  generateSummary();
+}
+
 function generateSummary() {
-  const starts = periodStarts();
-  const intervals = cycleIntervals();
-  const durations = bleedingDurations();
+  updateSummaryFilterUI();
+  const summaryEntries = getFilteredSummaryEntries();
+  const summaryDocs = getFilteredSummaryDocuments();
+
+  const starts = periodStarts(summaryEntries);
+  const intervals = cycleIntervals(summaryEntries);
+  const durations = bleedingDurations(summaryEntries);
   const cycleNotes = starts.length
     ? starts.map(entry => `• Period started: ${formatDate(entry.date)}${entry.detail && entry.detail !== 'Added by you' ? ` — ${entry.detail}` : ''}`)
-    : ['• No period start dates recorded yet.'];
+    : ['• No period start dates recorded in this observation window.'];
   if (intervals.length) {
     cycleNotes.push(...intervals.map(item => `• Cycle interval: ${formatDate(item.start.date)} to ${formatDate(item.end.date)} — ${item.days} days`));
   }
   cycleNotes.push(...(durations.length
     ? durations.map(item => `• Bleeding: ${formatDate(item.start.date)} to ${formatDate(item.end.date)} — ${item.days} days`)
-    : ['• Bleeding duration: no start/end date pairs recorded yet.']));
-  const notes = entries.filter(entry => !entry.sourceId && ['symptom', 'context', 'record'].includes(entry.type))
+    : ['• Bleeding duration: no start/end date pairs recorded in window.']));
+
+  const notes = summaryEntries.filter(entry => !entry.sourceId && ['symptom', 'context', 'record'].includes(entry.type))
     .slice().sort((a, b) => a.date.localeCompare(b.date))
     .map(entry => `• ${formatDate(entry.date)} — ${entry.title}${entry.detail && entry.detail !== 'Added by you' ? `: ${entry.detail}` : ''}`);
-  const spokenNotes = voiceNotes.slice().reverse()
+
+  const { minDate, maxDate } = getSummaryDateBounds();
+  const spokenNotes = voiceNotes.filter(n => (!minDate || n.date >= minDate) && (!maxDate || n.date <= maxDate))
+    .slice().reverse()
     .map(note => `• ${formatDate(note.date)} — “${note.text}”`);
-  const selectedDocuments = documents.filter(document => document.includeInSummary && ((document.notes && document.notes.trim()) || (document.keyFinding && document.keyFinding.trim())));
+
+  const selectedDocuments = summaryDocs.filter(document => document.includeInSummary && ((document.notes && document.notes.trim()) || (document.keyFinding && document.keyFinding.trim())));
   const recordNotes = selectedDocuments.map(document => {
     const parts = [];
     if (document.category) parts.push(`[${document.category}]`);
@@ -1420,30 +1640,43 @@ function generateSummary() {
     if (document.notes) parts.push(document.notes);
     return `• ${document.name}${document.recordDate ? ` (${formatDate(document.recordDate)})` : ''} — ${parts.join(' · ') || 'Included'}`;
   });
-  const analysis = analyze(entries, { today: localISODate(), rules: RULES });
+
+  const analysis = analyze(summaryEntries, { today: localISODate(), rules: RULES });
   const flagLines = analysis.flags.length
     ? analysis.flags.map(f => `• ${f.title}: ${f.message}`)
-    : ['• No out-of-range pattern flags under FIGO 2018 criteria.'];
+    : ['• No out-of-range pattern flags under FIGO 2018 criteria in this observation window.'];
 
   const popComp = analysis.populationComparison;
   const popLines = popComp ? [
     `• Patient Median: ${popComp.userMedian} days (Population Median: ${popComp.populationMedian} days, Middle 50%: ${popComp.middle50.min}–${popComp.middle50.max} days, Middle 90%: ${popComp.middle90.min}–${popComp.middle90.max} days)`,
     `• Distribution Position: ${popComp.bandLabel} (${popComp.percentileEstimate})`,
     popComp.variationComparison ? `• Within-Individual Variation: ${popComp.variationComparison.message}` : ''
-  ].filter(Boolean) : ['• Need 2+ period starts to calculate population comparison.'];
+  ].filter(Boolean) : ['• Need 2+ period starts in window to calculate population comparison.'];
+
+  const contextMarkers = summaryEntries.filter(e => e.type === 'context').sort((a, b) => b.date.localeCompare(a.date));
+  const allQuestions = getConsolidatedQuestions(analysis, contextMarkers);
+  const activeQuestions = allQuestions.filter(q => !disabledQuestionIds.has(q.id));
+  const questionLines = activeQuestions.length
+    ? activeQuestions.map(q => `• ${q.text}`)
+    : ['• (No questions currently selected for appointment agenda)'];
+
+  const filterLabelEl = document.getElementById('summaryRangeLabel');
+  const windowDescription = filterLabelEl ? filterLabelEl.textContent : 'All logged history';
 
   const section = (title, lines) => `${title}\n${lines.join('\n')}`;
   const value = [
+    section('OBSERVATION TIMEFRAME & OBSERVATION WINDOW', [`• Timeframe filter: ${windowDescription}`, `• Prepared on: ${formatDate(localISODate())}`]),
     section('CYCLE DATES & LENGTHS', cycleNotes),
     section('PATTERNS WORTH DISCUSSING (FIGO 2018 criteria — pending clinical review)', flagLines),
     section('POPULATION BENCHMARK CONTEXT (Bull et al. 2019, n=612k cycles)', popLines),
-    section('SYMPTOMS, CONTEXT & NOTES', notes.length ? notes : ['• No additional notes recorded.']),
-    section('VOICE CHECK-INS', spokenNotes.length ? spokenNotes : ['• No voice check-ins recorded.']),
-    section('MEDICAL RECORDS TO DISCUSS', recordNotes.length ? recordNotes : ['• No record notes selected.']),
-    section('QUESTIONS FOR THE APPOINTMENT', ['• '])
+    section('SYMPTOMS, CONTEXT & NOTES', notes.length ? notes : ['• No additional notes recorded in window.']),
+    section('VOICE CHECK-INS', spokenNotes.length ? spokenNotes : ['• No voice check-ins recorded in window.']),
+    section('MEDICAL RECORDS TO DISCUSS', recordNotes.length ? recordNotes : ['• No record notes selected in window.']),
+    section('QUESTIONS & DISCUSSION AGENDA FOR YOUR DOCTOR', questionLines)
   ].join('\n\n');
+
   const field = document.getElementById('summaryText');
-  if (!field.value || field.dataset.generated === 'true') {
+  if (field) {
     field.value = value;
     field.dataset.generated = 'true';
   }
@@ -1466,10 +1699,14 @@ function renderClinicianBrief() {
   const container = document.getElementById('clinicalBriefContent');
   if (!container) return;
 
-  const starts = periodStarts();
-  const intervals = cycleIntervals();
-  const durations = bleedingDurations();
-  const analysis = analyze(entries, { today: localISODate(), rules: RULES });
+  updateSummaryFilterUI();
+  const summaryEntries = getFilteredSummaryEntries();
+  const summaryDocs = getFilteredSummaryDocuments();
+
+  const starts = periodStarts(summaryEntries);
+  const intervals = cycleIntervals(summaryEntries);
+  const durations = bleedingDurations(summaryEntries);
+  const analysis = analyze(summaryEntries, { today: localISODate(), rules: RULES });
 
   const earliestDate = starts.length ? starts[0].date : localISODate();
   const latestDate = starts.length ? starts[starts.length - 1].date : localISODate();
@@ -1479,7 +1716,7 @@ function renderClinicianBrief() {
   let freqStatus = { text: 'Need 2+ starts', class: 'info' };
   if (analysis.summary) {
     freqValue = `${analysis.summary.min}–${analysis.summary.max} d`;
-    freqSub = `Across last ${analysis.basedOnCycles} cycles`;
+    freqSub = `Across last ${analysis.basedOnCycles} cycles in window`;
     const isNormal = analysis.summary.min >= 24 && analysis.summary.max <= 38;
     freqStatus = isNormal
       ? { text: 'Normal frequency (24–38d)', class: 'normal' }
@@ -1528,8 +1765,8 @@ function renderClinicianBrief() {
       : { text: daysSince > 38 ? 'Current cycle length extended' : 'Current cycle in progress', class: daysSince > 38 ? 'attention' : 'normal' };
   }
 
-  const contextMarkers = entries.filter(e => e.type === 'context').sort((a, b) => b.date.localeCompare(a.date));
-  let interventionHTML = '<p class="empty-state">No medical or lifestyle context markers logged yet.</p>';
+  const contextMarkers = summaryEntries.filter(e => e.type === 'context').sort((a, b) => b.date.localeCompare(a.date));
+  let interventionHTML = '<p class="empty-state">No medical or lifestyle context markers logged in this timeframe.</p>';
   if (contextMarkers.length) {
     const rows = contextMarkers.map(m => {
       const before = intervals.filter(i => i.end.date <= m.date).map(i => i.days);
@@ -1549,7 +1786,7 @@ function renderClinicianBrief() {
   }
 
   const groupedSymptoms = new Map();
-  entries.filter(e => e.type === 'symptom').forEach(e => {
+  summaryEntries.filter(e => e.type === 'symptom').forEach(e => {
     const name = e.title.trim();
     if (!name) return;
     const key = name.toLowerCase();
@@ -1559,34 +1796,44 @@ function renderClinicianBrief() {
   const topSymptoms = [...groupedSymptoms.values()].sort((a, b) => b.count - a.count);
   const symptomsHTML = topSymptoms.length
     ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${topSymptoms.map(s => `<span class="tag plum" style="font-size:12px;padding:4px 10px">${escapeHTML(s.name)} <strong>(${s.count}×)</strong></span>`).join('')}</div>`
-    : '<p class="empty-state">No symptoms recorded yet.</p>';
+    : '<p class="empty-state">No symptoms recorded in this timeframe.</p>';
 
-  const selectedDocs = documents.filter(d => d.includeInSummary && ((d.notes && d.notes.trim()) || (d.keyFinding && d.keyFinding.trim())));
+  const selectedDocs = summaryDocs.filter(d => d.includeInSummary && ((d.notes && d.notes.trim()) || (d.keyFinding && d.keyFinding.trim())));
   const docsHTML = selectedDocs.length
     ? `<ul style="margin:8px 0 0 18px;padding:0;font-size:13px;color:var(--ink)">${selectedDocs.map(d => `<li style="margin-bottom:6px"><strong>${escapeHTML(d.name)}</strong>${d.category ? ` <span class="tag lab-tag" style="font-size:10px;padding:2px 7px">${escapeHTML(d.category)}</span>` : ''}${d.recordDate ? ` (${formatDate(d.recordDate)})` : ''}: ${d.keyFinding ? `<span style="color:#0369a1;font-weight:600">${escapeHTML(d.keyFinding)}</span>${d.notes ? ' · ' : ''}` : ''}${escapeHTML(d.notes || '')}</li>`).join('')}</ul>`
-    : '<p class="empty-state">No document notes selected for this appointment.</p>';
+    : '<p class="empty-state">No document notes selected for this appointment window.</p>';
 
-  const questions = [];
-  if (analysis.populationComparison && (analysis.populationComparison.band === 'longer-90' || analysis.populationComparison.band === 'shorter-90')) {
-    questions.push(`“My median cycle length of ${analysis.populationComparison.userMedian} days sits outside the 5th–95th percentile benchmark seen in large published studies (23–38 days). What potential physiological or hormonal factors should we consider exploring?”`);
-  }
-  if (analysis.flags.some(f => f.id === 'variable_cycles' || f.id === 'long_cycles')) {
-    questions.push(`“My recorded cycle lengths vary by ${analysis.summary ? analysis.summary.spread : '>9'} days. Would you recommend blood work (e.g. TSH, prolactin, free testosterone) or a pelvic ultrasound to investigate potential hormonal factors?”`);
-  }
-  if (analysis.flags.some(f => f.id === 'long_bleeding')) {
-    questions.push('“My bleeding duration has reached over 8 days on several cycles. What could be contributing to prolonged bleeding, and should we evaluate for iron deficiency or polyps?”');
-  }
-  if (analysis.flags.some(f => f.id === 'long_gap')) {
-    questions.push(`“It has been over 90 days since my last period start. What is the standard protocol for inducing a cycle or investigating secondary amenorrhea?”`);
-  }
-  if (contextMarkers.length) {
-    questions.push(`“I recorded ${contextMarkers[0].title} on ${formatDate(contextMarkers[0].date)}. Could there be any connection between this shift and the cycle variance I'm seeing?”`);
-  }
-  if (!questions.length) {
-    questions.push('“Given my recorded cycle range and symptoms, are there any preventive screenings or baseline tests you recommend discussing today?”');
-  }
-
-  const questionsHTML = `<div class="question-list">${questions.map((q, idx) => `<div class="question-item"><span class="question-num">Q${idx + 1}</span><span>${escapeHTML(q)}</span></div>`).join('')}</div>`;
+  const allQuestions = getConsolidatedQuestions(analysis, contextMarkers);
+  const questionsHTML = `
+    <div class="question-list">
+      ${allQuestions.map((q, idx) => {
+        const isEnabled = !disabledQuestionIds.has(q.id);
+        const numLabel = `Q${idx + 1}`;
+        const deleteBtn = q.isCustom ? `<button type="button" class="question-remove-btn" onclick="removeCustomQuestion('${q.id}')" title="Delete question">×</button>` : '';
+        return `
+          <div class="question-item ${isEnabled ? '' : 'disabled'}">
+            <div class="question-check-wrap">
+              <input type="checkbox" id="chk_${q.id}" ${isEnabled ? 'checked' : ''} onchange="toggleQuestion('${q.id}')" aria-label="Include question in agenda">
+            </div>
+            <div class="question-content-wrap">
+              <div>
+                <strong style="color:var(--plum);margin-right:6px">${numLabel}</strong>
+                <span>${escapeHTML(q.text)}</span>
+              </div>
+              <div class="question-meta-row">
+                <span class="tag ${q.tagClass}" style="font-size:10px">${escapeHTML(q.tag)}</span>
+                ${deleteBtn}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+    <div class="add-question-box">
+      <input type="text" id="newQuestionInput" placeholder="Add your own question or discussion topic for your doctor..." onkeydown="if(event.key==='Enter'){event.preventDefault();addCustomQuestion();}">
+      <button class="btn primary" type="button" onclick="addCustomQuestion()">＋ Add question</button>
+    </div>
+  `;
 
   container.innerHTML = `
     <div class="brief-header">
@@ -1647,7 +1894,7 @@ function renderClinicianBrief() {
       <div class="brief-section-title">2. Population Benchmark Layer (Bull et al. 2019, n=612k)</div>
       ${(() => {
         const pop = analysis.populationComparison;
-        if (!pop) return '<p class="empty-state">Need 2 or more period starts to compare with population study data.</p>';
+        if (!pop) return '<p class="empty-state">Need 2 or more period starts in window to compare with population study data.</p>';
         return `
           <div class="clinical-grid">
             <div class="clinical-metric-card">
@@ -1706,7 +1953,7 @@ function renderClinicianBrief() {
     </div>
 
     <div class="brief-section">
-      <div class="brief-section-title">6. Prepared Questions for Your Doctor</div>
+      <div class="brief-section-title">6. Discussion Agenda for Your Doctor (${allQuestions.filter(q => !disabledQuestionIds.has(q.id)).length} selected)</div>
       ${questionsHTML}
     </div>
   `;
@@ -2018,6 +2265,146 @@ function migrateOldVoiceEntries() {
   persistEntries();
 }
 
+async function exportDataBackup() {
+  try {
+    const db = await openDocumentDatabase();
+    const docRecords = await new Promise((resolve, reject) => {
+      const tx = db.transaction([DOCUMENT_STORE], 'readonly');
+      const req = tx.objectStore(DOCUMENT_STORE).getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+
+    const docFiles = await new Promise((resolve, reject) => {
+      const tx = db.transaction([DOCUMENT_FILE_STORE], 'readonly');
+      const req = tx.objectStore(DOCUMENT_FILE_STORE).openCursor();
+      const filesMap = {};
+      req.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          filesMap[cursor.key] = cursor.value;
+          cursor.continue();
+        } else {
+          resolve(filesMap);
+        }
+      };
+      req.onerror = () => reject(req.error);
+    });
+
+    const serializableDocs = [];
+    for (const doc of docRecords) {
+      const fileData = docFiles[doc.id];
+      let base64 = null;
+      if (fileData) {
+        base64 = await new Promise(res => {
+          const reader = new FileReader();
+          reader.onload = () => res(reader.result);
+          reader.onerror = () => res(null);
+          reader.readAsDataURL(fileData);
+        });
+      }
+      serializableDocs.push({ metadata: doc, fileData: base64 });
+    }
+
+    const backupPayload = {
+      appName: 'Cycle Context',
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      exportDate: new Date().toISOString(),
+      entries,
+      voiceNotes,
+      customQuestions,
+      disabledQuestionIds: Array.from(disabledQuestionIds),
+      documents: serializableDocs
+    };
+
+    const blob = new Blob([JSON.stringify(backupPayload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cycle-context-backup-${localISODate()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast('Backup downloaded successfully');
+  } catch (err) {
+    console.error('Backup export failed:', err);
+    alert('Failed to generate backup: ' + err.message);
+  }
+}
+
+async function importDataBackup(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+
+    if (!data.appName && !Array.isArray(data.entries)) {
+      throw new Error('Unrecognized backup format.');
+    }
+
+    if (!confirm(`Restore backup from ${formatDate(data.exportDate?.slice(0, 10) || localISODate())}? This will merge and update your records on this device.`)) {
+      input.value = '';
+      return;
+    }
+
+    if (Array.isArray(data.entries)) {
+      entries = data.entries.map(e => ({ schemaVersion: CURRENT_SCHEMA_VERSION, ...e }));
+      persistEntries();
+    }
+    if (Array.isArray(data.voiceNotes)) {
+      voiceNotes = data.voiceNotes;
+      persistVoiceNotes();
+    }
+    if (Array.isArray(data.customQuestions)) {
+      customQuestions = data.customQuestions;
+      persistCustomQuestions();
+    }
+    if (Array.isArray(data.disabledQuestionIds)) {
+      disabledQuestionIds = new Set(data.disabledQuestionIds);
+      persistDisabledQuestions();
+    }
+
+    if (Array.isArray(data.documents) && data.documents.length) {
+      const db = await openDocumentDatabase();
+      for (const item of data.documents) {
+        const meta = item.metadata;
+        if (!meta || !meta.id) continue;
+        await new Promise((res, rej) => {
+          const tx = db.transaction([DOCUMENT_STORE], 'readwrite');
+          tx.objectStore(DOCUMENT_STORE).put(meta);
+          tx.oncomplete = res;
+          tx.onerror = rej;
+        });
+
+        if (item.fileData) {
+          const res = await fetch(item.fileData);
+          const blob = await res.blob();
+          await new Promise((res2, rej2) => {
+            const tx2 = db.transaction([DOCUMENT_FILE_STORE], 'readwrite');
+            tx2.objectStore(DOCUMENT_FILE_STORE).put(blob, meta.id);
+            tx2.oncomplete = res2;
+            tx2.onerror = rej2;
+          });
+        }
+      }
+      await loadDocuments();
+    }
+
+    render();
+    generateSummary();
+    toast('Backup restored successfully');
+  } catch (err) {
+    console.error('Backup import error:', err);
+    alert('Failed to restore backup: ' + err.message);
+  } finally {
+    input.value = '';
+  }
+}
+
 Object.assign(window, {
   go,
   openLog,
@@ -2041,7 +2428,15 @@ Object.assign(window, {
   refreshVoiceEvents,
   resetData,
   handleDocumentFiles,
-  removeDocument
+  removeDocument,
+  setSummaryRange,
+  applyCustomSummaryDates,
+  clearCustomSummaryDates,
+  toggleQuestion,
+  addCustomQuestion,
+  removeCustomQuestion,
+  exportDataBackup,
+  importDataBackup
 });
 
 initialize();

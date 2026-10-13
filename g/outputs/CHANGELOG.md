@@ -1,6 +1,13 @@
 
 # Rules changelog
 
+## 0.3.0
+- Added Clinician Consultation Toolkit & Data Portability.
+  - Appointment timeframe observation filtering: Preset chips (All time, 3 months, 6 months, 12 months) and custom date-range selector to filter periods, cycle metrics, symptoms, and documents for clinic visits.
+  - Interactive Doctor Discussion Agenda Builder: Auto-suggested and custom question checklist with add/remove capabilities, persistent local storage, and exclusion toggle for print/copy.
+  - Complete JSON Data Portability: One-click private JSON backup export and restoration including cycle entries, voice notes, document metadata/files, and discussion agendas.
+  - Print/PDF layout optimizations for clean, clinical consultation brief exports.
+
 ## 0.2.0
 - Added Population Comparison & Benchmark Layer (Bull et al., 2019; npj Digital Medicine).
   - Source: Bull JR, Rowland SP, Scherwitzl EB, et al. *Real-world menstrual cycle characteristics of more than 600,000 menstrual cycles*. npj Digit. Med. 2, 83 (2019). Marked `verify: true`.

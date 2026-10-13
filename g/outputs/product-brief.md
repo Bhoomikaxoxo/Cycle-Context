@@ -175,9 +175,9 @@ Implement accounts, cycle logging/editing, reviewed voice check-ins that create 
 
 Add private document upload, separate notes and dates for each report, user-controlled summary inclusion, and an editable summary export. Assisted extraction can be evaluated separately after the review flow is useful and trustworthy.
 
-### Phase 4 — Refine with users
+### Phase 4 — Clinician consultation toolkit & data portability
 
-Run usability sessions focused on irregular-cycle comprehension, uncertainty, privacy controls, and whether the summary is useful in an appointment. Adjust before adding more predictions or automation.
+Provide custom observation timeframe filters (3m, 6m, 1yr, custom range) for appointment preparation, an interactive doctor discussion questions agenda builder (custom + clinical/population prompt selection), print-optimized clinician one-pager exports, and full JSON data portability (export and restoration).
 
 ## Decisions to revisit before implementation
 
