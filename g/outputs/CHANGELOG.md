@@ -1,6 +1,16 @@
 
 # Rules changelog
 
+## 0.4.0
+- Added Assisted Medical Report Key-Finding Extraction.
+  - Client-side, local-first privacy: 100% on-device parsing of uploaded text/lab reports and pasted notes without sending any private medical records to external cloud servers.
+  - Structured extraction of core hormone panels & assays: TSH, Free T4, Total Testosterone, Free Testosterone, DHEA-S, AMH, Estradiol (E2), FSH, LH, automated LH:FSH ratio calculation, Prolactin, Progesterone, Fasting Insulin, HbA1c, and Ferritin with units and reference intervals.
+  - Structured extraction of pelvic & follicle ultrasound findings: Endometrial thickness (mm), Antral Follicle Count (total AFC and per-ovary counts), Ovarian volumes (cm³ / mL), and imaging morphological features (PCOM, trilaminar endometrium).
+  - Mandatory Patient Review & Verification Flow: Candidate metrics and dates are presented in an interactive review modal allowing selective inclusion, inline adjustments, and manual custom finding additions before saving.
+  - Transparent Evidence Labels & Provenance: Confirmed values are explicitly tagged across the UI as `<span class="tag lab-tag">Extracted from report (confirmed by you)</span>` on document cards, the synchronized cycle timeline, and the clinician consultation brief.
+  - Diagnostic Safeguard: Does not perform automated disease diagnosis, algorithmic risk scoring, or treatment recommendations; preserves objective laboratory values and patient autonomy.
+  - Automated `.txt` document detection: Reads plain-text reports upon upload and automatically launches the review scanner.
+
 ## 0.3.0
 - Added Clinician Consultation Toolkit & Data Portability.
   - Appointment timeframe observation filtering: Preset chips (All time, 3 months, 6 months, 12 months) and custom date-range selector to filter periods, cycle metrics, symptoms, and documents for clinic visits.

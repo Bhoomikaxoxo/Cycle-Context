@@ -2020,6 +2020,66 @@ main {
   cursor: pointer;
 }
 
+/* Assisted Medical Report Extraction */
+.modal.extraction-modal {
+  width: min(680px, 95vw);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.extraction-advisory {
+  background: #f0fdf4;
+  border-left: 3px solid var(--teal);
+  font-size: 12px;
+  color: var(--ink);
+  line-height: 1.5;
+  margin: 12px 0 16px;
+  padding: 10px 14px;
+  border-radius: 4px;
+}
+.candidate-findings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
+  margin-bottom: 12px;
+}
+.candidate-finding-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--sand);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 12px;
+  transition: opacity 0.2s, border-color 0.2s;
+}
+.candidate-finding-item.excluded {
+  opacity: 0.45;
+  background: #f8f9fa;
+}
+.candidate-finding-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--teal);
+}
+.candidate-edit-input {
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 5px 8px;
+  width: 100%;
+}
+.candidate-edit-input:focus {
+  outline: none;
+  border-color: var(--teal);
+}
+
 /* Phase 5: Window of Possibility & Readiness */
 .readiness-card {
   position: relative;

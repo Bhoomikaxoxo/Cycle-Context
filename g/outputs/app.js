@@ -1,7 +1,44 @@
 import { RULES, analyze } from './analysis.js';
 import { parseVoiceEvents } from './extraction.js';
+import { extractReportDetails, extractReportDate } from './report-extraction.js';
 
 const CURRENT_SCHEMA_VERSION = 1;
+
+const SAMPLE_HORMONE_REPORT = `PATIENT LAB REPORT
+Collection Date: 14 Oct 2024
+Report Date: 15 Oct 2024
+
+TEST NAME                          RESULT    UNITS       REFERENCE INTERVAL
+Thyroid Stimulating Hormone (TSH)  2.45      mIU/L       (0.40 - 4.20)
+Total Testosterone                 54        ng/dL       (15 - 70)
+Free Testosterone                  4.2       pg/mL       (1.0 - 6.4)
+Prolactin                          16.8      ng/mL       (4.8 - 23.3)
+Estradiol (E2)                     62        pg/mL       (30 - 120)
+FSH                                5.6       mIU/mL      (3.5 - 12.5)
+LH                                 12.8      mIU/mL      (2.4 - 12.6)
+AMH (Anti-Müllerian Hormone)       5.8       ng/mL       (1.0 - 4.0)
+Progesterone                       0.6       ng/mL       (0.2 - 1.5)
+DHEA-Sulfate                       260       ug/dL       (65 - 380)
+Fasting Insulin                    9.2       uIU/mL      (2.6 - 24.9)
+HbA1c                              5.3       %           (4.0 - 5.6)
+Ferritin                           42        ng/mL       (15 - 150)`;
+
+const SAMPLE_ULTRASOUND_REPORT = `PELVIC ULTRASOUND REPORT
+Date of Exam: 2024-09-18
+Indication: Irregular menstrual cycles, rule out PCOS.
+
+FINDINGS:
+Endometrial thickness: 6.8 mm, regular, trilaminar appearance.
+Right Ovary: Volume 8.6 cm3. Antral follicle count: 14 follicles measuring 2-8 mm in peripheral distribution.
+Left Ovary: Volume 9.2 cm3. Antral follicle count: 16 follicles in peripheral distribution.
+Total AFC: 30 follicles.
+Free fluid: None in the pouch of Douglas.
+
+IMPRESSION:
+Features compatible with polycystic ovarian morphology (PCOM) based on bilateral elevated follicle count.`;
+
+let currentExtractionDocId = null;
+let candidateFindings = [];
 
 const SAMPLE_ENTRIES = [
   { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-09-06', type: 'period', title: 'Period started', detail: 'Flow: moderate' },
@@ -180,7 +217,8 @@ function getAllTimelineItems() {
     category: doc.category || 'Lab / Medical report',
     detail: doc.keyFinding ? `Key finding: ${doc.keyFinding}${doc.notes ? ` · Note: ${doc.notes}` : ''}` : (doc.notes || ''),
     documentId: doc.id,
-    fileName: doc.name
+    fileName: doc.name,
+    extractionConfirmed: Boolean(doc.extractionConfirmed)
   }));
   return [...visibleEntries, ...docItems].sort((a, b) => b.date.localeCompare(a.date));
 }
@@ -207,13 +245,16 @@ function timelineMarkup(list) {
 
     const itemsHTML = items.map(entry => {
       if (entry.type === 'document') {
+        const provenanceBadge = entry.extractionConfirmed
+          ? `<span class="tag lab-tag">Extracted from report (confirmed by you)</span>`
+          : `<span class="tag lab-tag">${escapeHTML(entry.category || 'Lab / Report')}</span>`;
         return `<div class="timeline-day-entry lab-entry">
           <div class="timeline-day-entry-main">
             <strong>${escapeHTML(entry.title)}</strong>
             ${entry.detail ? `<span class="timeline-entry-note">${escapeHTML(entry.detail)}</span>` : ''}
           </div>
           <div class="timeline-day-entry-tags">
-            <span class="tag lab-tag">${escapeHTML(entry.category || 'Lab / Report')}</span>
+            ${provenanceBadge}
             <button class="text-button timeline-source" onclick="downloadDocumentById('${entry.documentId}')">Download</button>
             <button class="text-button timeline-source" onclick="go('records')">View in records</button>
           </div>
@@ -1800,7 +1841,7 @@ function renderClinicianBrief() {
 
   const selectedDocs = summaryDocs.filter(d => d.includeInSummary && ((d.notes && d.notes.trim()) || (d.keyFinding && d.keyFinding.trim())));
   const docsHTML = selectedDocs.length
-    ? `<ul style="margin:8px 0 0 18px;padding:0;font-size:13px;color:var(--ink)">${selectedDocs.map(d => `<li style="margin-bottom:6px"><strong>${escapeHTML(d.name)}</strong>${d.category ? ` <span class="tag lab-tag" style="font-size:10px;padding:2px 7px">${escapeHTML(d.category)}</span>` : ''}${d.recordDate ? ` (${formatDate(d.recordDate)})` : ''}: ${d.keyFinding ? `<span style="color:#0369a1;font-weight:600">${escapeHTML(d.keyFinding)}</span>${d.notes ? ' · ' : ''}` : ''}${escapeHTML(d.notes || '')}</li>`).join('')}</ul>`
+    ? `<ul style="margin:8px 0 0 18px;padding:0;font-size:13px;color:var(--ink)">${selectedDocs.map(d => `<li style="margin-bottom:6px"><strong>${escapeHTML(d.name)}</strong>${d.category ? ` <span class="tag lab-tag" style="font-size:10px;padding:2px 7px">${escapeHTML(d.category)}</span>` : ''}${d.extractionConfirmed ? ` <span class="tag lab-tag" style="font-size:10px;padding:2px 7px">Extracted from report (confirmed by you)</span>` : ''}${d.recordDate ? ` (${formatDate(d.recordDate)})` : ''}: ${d.keyFinding ? `<span style="color:#0369a1;font-weight:600">${escapeHTML(d.keyFinding)}</span>${d.notes ? ' · ' : ''}` : ''}${escapeHTML(d.notes || '')}</li>`).join('')}</ul>`
     : '<p class="empty-state">No document notes selected for this appointment window.</p>';
 
   const allQuestions = getConsolidatedQuestions(analysis, contextMarkers);
@@ -2037,14 +2078,27 @@ async function putDocument(documentRecord) {
 async function handleDocumentFiles(input) {
   const files = [...input.files];
   input.value = '';
+  let autoExtractDocId = null;
+  let autoExtractText = '';
   for (const file of files) {
     if (file.size > MAX_FILE_SIZE) {
       toast(`${file.name} is larger than 25 MB and was skipped`);
       continue;
     }
     try {
+      const docId = newID();
+      let textContent = '';
+      if (file.type.includes('text') || file.name.endsWith('.txt')) {
+        try {
+          textContent = await file.text();
+          autoExtractDocId = docId;
+          autoExtractText = textContent;
+        } catch (e) {
+          console.warn('Could not read text from file:', e);
+        }
+      }
       await putDocument({
-        id: newID(), name: file.name, mime: file.type || 'File', size: file.size,
+        id: docId, name: file.name, mime: file.type || 'File', size: file.size,
         uploadedAt: localISODate(), recordDate: '', notes: '', includeInSummary: false, blob: file
       });
     } catch {
@@ -2054,6 +2108,9 @@ async function handleDocumentFiles(input) {
   }
   await loadDocuments();
   if (files.length) toast(`${files.length} document${files.length === 1 ? '' : 's'} added to this device`);
+  if (autoExtractDocId && autoExtractText) {
+    openReportExtractionModal(autoExtractDocId, autoExtractText);
+  }
 }
 
 async function loadDocuments() {
@@ -2099,6 +2156,14 @@ function renderDocuments() {
     const info = document.createElement('small');
     info.textContent = `${documentRecord.mime} · ${formatFileSize(documentRecord.size)} · added ${formatDate(documentRecord.uploadedAt)}`;
     heading.append(title, info);
+
+    if (documentRecord.extractionConfirmed) {
+      const provBadge = document.createElement('span');
+      provBadge.className = 'tag lab-tag';
+      provBadge.style.marginTop = '4px';
+      provBadge.textContent = 'Extracted from report (confirmed by you)';
+      heading.append(provBadge);
+    }
 
     const fieldsGrid = document.createElement('div');
     fieldsGrid.className = 'document-record-fields';
@@ -2166,6 +2231,14 @@ function renderDocuments() {
 
     const actions = document.createElement('div');
     actions.className = 'document-actions';
+
+    const extractBtn = document.createElement('button');
+    extractBtn.className = 'btn soft';
+    extractBtn.style.fontSize = '12px';
+    extractBtn.style.padding = '5px 11px';
+    extractBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:4px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>Assisted extract`;
+    extractBtn.addEventListener('click', () => openReportExtractionModal(documentRecord.id));
+
     const save = document.createElement('button');
     save.className = 'btn';
     save.textContent = 'Save changes';
@@ -2177,18 +2250,254 @@ function renderDocuments() {
       showOnTimeline: timelineCheck.checked,
       includeInSummary: summaryCheck.checked
     }));
+
     const download = document.createElement('button');
     download.className = 'text-button';
     download.textContent = 'Download original';
     download.addEventListener('click', () => downloadDocument(documentRecord));
+
     const remove = document.createElement('button');
     remove.className = 'text-button remove-document';
     remove.textContent = 'Remove';
     remove.addEventListener('click', () => removeDocument(documentRecord.id));
-    actions.append(save, download, remove);
+
+    actions.append(extractBtn, save, download, remove);
     article.append(heading, fieldsGrid, noteLabel, checkContainer, actions);
     list.append(article);
   });
+}
+
+async function openReportExtractionModal(docId = null, initialText = '') {
+  currentExtractionDocId = docId;
+  const modal = document.getElementById('extractionModalBackdrop');
+  if (!modal) return;
+
+  const titleEl = document.getElementById('extractionModalTitle');
+  const textEl = document.getElementById('extractionText');
+  const dateEl = document.getElementById('extractionReportDate');
+  const catEl = document.getElementById('extractionCategory');
+  const reviewSec = document.getElementById('extractionReviewSection');
+  const confirmBtn = document.getElementById('confirmExtractionBtn');
+  const previewEl = document.getElementById('compiledFindingPreview');
+  const dateHintEl = document.getElementById('extractionDateHint');
+
+  if (dateHintEl) dateHintEl.textContent = '';
+  if (confirmBtn) confirmBtn.disabled = true;
+  candidateFindings = [];
+
+  let textToScan = initialText;
+
+  if (docId) {
+    const doc = documents.find(d => d.id === docId);
+    if (doc) {
+      titleEl.textContent = `Review Report: ${doc.name}`;
+      if (dateEl) dateEl.value = doc.recordDate || '';
+      if (catEl) catEl.value = doc.category || 'Blood / Hormone panel';
+      if (previewEl) previewEl.value = doc.keyFinding || '';
+      if (!textToScan && (doc.mime.includes('text') || doc.name.endsWith('.txt'))) {
+        try {
+          const stored = await getDocument(docId);
+          if (stored && stored.blob) {
+            textToScan = await stored.blob.text();
+          }
+        } catch (err) {
+          console.warn('Could not read stored blob text:', err);
+        }
+      }
+    }
+  } else {
+    titleEl.textContent = 'Assisted Medical Report Key-Finding Scan';
+    if (dateEl) dateEl.value = '';
+    if (catEl) catEl.value = 'Blood / Hormone panel';
+    if (previewEl) previewEl.value = '';
+  }
+
+  if (textEl) textEl.value = textToScan;
+  modal.classList.add('show');
+
+  if (textToScan && textToScan.trim()) {
+    runExtractionScan();
+  } else {
+    if (reviewSec) reviewSec.style.display = 'none';
+  }
+}
+
+function closeExtractionModal() {
+  const modal = document.getElementById('extractionModalBackdrop');
+  if (modal) modal.classList.remove('show');
+  currentExtractionDocId = null;
+  candidateFindings = [];
+}
+
+function loadSampleReport(type) {
+  const textEl = document.getElementById('extractionText');
+  if (!textEl) return;
+  if (type === 'hormone') {
+    textEl.value = SAMPLE_HORMONE_REPORT;
+  } else if (type === 'ultrasound') {
+    textEl.value = SAMPLE_ULTRASOUND_REPORT;
+  }
+  runExtractionScan();
+}
+
+function runExtractionScan() {
+  const text = (document.getElementById('extractionText')?.value || '').trim();
+  if (!text) {
+    toast('Please enter or paste report text first');
+    return;
+  }
+
+  const res = extractReportDetails(text);
+  const dateEl = document.getElementById('extractionReportDate');
+  const catEl = document.getElementById('extractionCategory');
+  const dateHintEl = document.getElementById('extractionDateHint');
+  const reviewSec = document.getElementById('extractionReviewSection');
+
+  if (res.date && dateEl && !dateEl.value) {
+    dateEl.value = res.date;
+  }
+  if (dateHintEl) {
+    dateHintEl.textContent = res.dateSnippet ? `Found in report: "${res.dateSnippet}"` : '';
+  }
+  if (catEl && res.category) {
+    catEl.value = res.category;
+  }
+
+  candidateFindings = res.findings.map(f => ({
+    id: f.id,
+    metric: f.metric,
+    value: f.value,
+    unit: f.unit,
+    range: f.range,
+    formatted: f.formatted,
+    type: f.type,
+    checked: true
+  }));
+
+  if (reviewSec) reviewSec.style.display = 'block';
+  renderCandidateFindingsList();
+
+  if (res.findings.length) {
+    toast(`Recognized ${res.findings.length} candidate measurement${res.findings.length === 1 ? '' : 's'}. Review before saving.`);
+  } else {
+    toast('No standard hormone or ultrasound measurements detected in text. You can add findings manually or check date.');
+  }
+}
+
+function renderCandidateFindingsList() {
+  const container = document.getElementById('candidateFindingsList');
+  if (!container) return;
+  if (!candidateFindings.length) {
+    container.innerHTML = '<p class="empty-state" style="padding:10px;font-size:12px">No findings in review list. Click "＋ Add custom finding" to add one.</p>';
+    updateCompiledFindingPreview();
+    return;
+  }
+  container.innerHTML = candidateFindings.map((item, idx) => `
+    <div class="candidate-finding-item ${item.checked ? 'included' : 'excluded'}" data-index="${idx}">
+      <input type="checkbox" id="cfind_${idx}" ${item.checked ? 'checked' : ''} onchange="toggleFindingItem(${idx})" aria-label="Include ${escapeHTML(item.metric)}">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
+          <strong style="font-size:12px;color:var(--ink)">${escapeHTML(item.metric)}</strong>
+          ${item.range ? `<span class="tag info" style="font-size:10px;padding:1px 6px">ref: ${escapeHTML(item.range)}</span>` : ''}
+          <span class="tag" style="font-size:10px;padding:1px 6px;text-transform:capitalize">${escapeHTML(item.type || 'finding')}</span>
+        </div>
+        <input type="text" class="candidate-edit-input" value="${escapeHTML(item.formatted)}" oninput="updateFindingItemText(${idx}, this.value)" placeholder="Metric formatted text">
+      </div>
+      <button type="button" class="text-button remove-document" onclick="removeFindingItem(${idx})" title="Remove item" style="font-size:16px;padding:2px 6px">×</button>
+    </div>
+  `).join('');
+  updateCompiledFindingPreview();
+}
+
+function toggleFindingItem(index) {
+  if (candidateFindings[index]) {
+    candidateFindings[index].checked = !candidateFindings[index].checked;
+    renderCandidateFindingsList();
+  }
+}
+
+function updateFindingItemText(index, text) {
+  if (candidateFindings[index]) {
+    candidateFindings[index].formatted = text;
+    updateCompiledFindingPreview();
+  }
+}
+
+function removeFindingItem(index) {
+  candidateFindings.splice(index, 1);
+  renderCandidateFindingsList();
+}
+
+function addManualFindingItem() {
+  const metric = prompt('Enter metric or assay name (e.g. Vitamin D, Fasting Glucose):');
+  if (!metric || !metric.trim()) return;
+  const value = prompt(`Enter finding or value for ${metric.trim()} (e.g. 32 ng/mL):`);
+  if (!value || !value.trim()) return;
+  const formatted = `${metric.trim()}: ${value.trim()}`;
+  candidateFindings.push({
+    id: 'custom_' + Date.now(),
+    metric: metric.trim(),
+    value: value.trim(),
+    unit: '',
+    range: null,
+    formatted,
+    type: 'custom',
+    checked: true
+  });
+  renderCandidateFindingsList();
+}
+
+function updateCompiledFindingPreview() {
+  const preview = document.getElementById('compiledFindingPreview');
+  const confirmBtn = document.getElementById('confirmExtractionBtn');
+  if (!preview) return;
+  const activeFindings = candidateFindings.filter(f => f.checked && f.formatted && f.formatted.trim());
+  const compiled = activeFindings.map(f => f.formatted.trim()).join(' · ');
+  preview.value = compiled;
+  if (confirmBtn) {
+    const hasDate = Boolean(document.getElementById('extractionReportDate')?.value);
+    confirmBtn.disabled = !compiled && !hasDate;
+  }
+}
+
+async function confirmAndApplyExtraction() {
+  const reportDate = document.getElementById('extractionReportDate')?.value || '';
+  const category = document.getElementById('extractionCategory')?.value || 'Blood / Hormone panel';
+  const keyFinding = (document.getElementById('compiledFindingPreview')?.value || '').trim();
+  const confirmedFindings = candidateFindings.filter(f => f.checked);
+
+  if (currentExtractionDocId) {
+    await updateDocument(currentExtractionDocId, {
+      recordDate: reportDate,
+      category,
+      keyFinding,
+      extractionConfirmed: true,
+      extractedFindings: confirmedFindings
+    });
+  } else {
+    const docId = newID();
+    const docName = `${category === 'Pelvic / Follicle Ultrasound' ? 'Ultrasound Report' : 'Hormone Panel Lab Report'} (${reportDate ? formatDate(reportDate) : 'Dated'})`;
+    const textLength = (document.getElementById('extractionText')?.value || '').length || 1024;
+    await putDocument({
+      id: docId,
+      name: docName,
+      mime: 'text/plain',
+      size: textLength,
+      uploadedAt: localISODate(),
+      recordDate: reportDate,
+      category,
+      keyFinding,
+      notes: 'Reviewed and confirmed from assisted report extraction.',
+      includeInSummary: true,
+      showOnTimeline: true,
+      extractionConfirmed: true,
+      extractedFindings: confirmedFindings
+    });
+    await loadDocuments();
+  }
+
+  closeExtractionModal();
+  toast('Extracted report values confirmed and saved to record');
 }
 
 async function updateDocument(id, changes) {
@@ -2436,7 +2745,18 @@ Object.assign(window, {
   addCustomQuestion,
   removeCustomQuestion,
   exportDataBackup,
-  importDataBackup
+  importDataBackup,
+  openReportExtractionModal,
+  closeExtractionModal,
+  loadSampleReport,
+  runExtractionScan,
+  renderCandidateFindingsList,
+  toggleFindingItem,
+  updateFindingItemText,
+  removeFindingItem,
+  addManualFindingItem,
+  updateCompiledFindingPreview,
+  confirmAndApplyExtraction
 });
 
 initialize();
