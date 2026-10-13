@@ -1,6 +1,16 @@
 
 # Rules changelog
 
+## 0.2.0
+- Added Population Comparison & Benchmark Layer (Bull et al., 2019; npj Digital Medicine).
+  - Source: Bull JR, Rowland SP, Scherwitzl EB, et al. *Real-world menstrual cycle characteristics of more than 600,000 menstrual cycles*. npj Digit. Med. 2, 83 (2019). Marked `verify: true`.
+  - Sample size: 612,613 cycles across 124,648 individuals.
+  - Population median: 29.0 days, mean: 29.3 days (SD 5.2).
+  - Middle 50% interquartile range (IQR): 27–31 days.
+  - Middle 90% (5th–95th percentile): 23–38 days.
+  - Individual cycle variation context: Typical within-person variation is 2–4 days (median 2.5); variation >9 days occurs in <10% of users.
+  - Provides non-judgmental, purely statistical population distribution context alongside the patient's personal baseline.
+
 ## 0.1.0
 - Initial thresholds (FIGO 2018-based). All marked `verify: true`; confirm against source before release.
   - Cycle length: 24–38 days (frequency)

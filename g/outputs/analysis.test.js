@@ -72,4 +72,47 @@ test("supports app.js entry format with title/periodRole", () => {
   assert.ok(ids(r).includes("long_cycles"));
   assert.equal(r.summary.min, 44);
   assert.equal(r.summary.max, 45);
+  assert.equal(r.summary.spread, 1);
+});
+
+test("population comparison: middle 50% band (27-31 days)", () => {
+  const r = analyze(starts("2025-01-01", [28, 29, 29]));
+  assert.ok(r.populationComparison);
+  assert.equal(r.populationComparison.band, "middle50");
+  assert.equal(r.populationComparison.userMedian, 29);
+  assert.equal(r.populationComparison.populationMedian, 29);
+  assert.ok(r.populationComparison.variationComparison.isTypical);
+  assert.ok(r.populationComparison.source.includes("Bull et al."));
+});
+
+test("population comparison: longer-90 band (>38 days) and longer-50 band (32-38 days)", () => {
+  const high = analyze(starts("2025-01-01", [40, 42]));
+  assert.equal(high.populationComparison.band, "longer-90");
+  assert.equal(high.populationComparison.percentileEstimate, "> 95th percentile");
+
+  const midHigh = analyze(starts("2025-01-01", [34, 35]));
+  assert.equal(midHigh.populationComparison.band, "longer-50");
+  assert.equal(midHigh.populationComparison.percentileEstimate, "75th–95th percentile");
+});
+
+test("population comparison: shorter-90 band (<23 days) and shorter-50 band (23-26 days)", () => {
+  const low = analyze(starts("2025-01-01", [20, 21]));
+  assert.equal(low.populationComparison.band, "shorter-90");
+  assert.equal(low.populationComparison.percentileEstimate, "< 5th percentile");
+
+  const midLow = analyze(starts("2025-01-01", [24, 25]));
+  assert.equal(midLow.populationComparison.band, "shorter-50");
+  assert.equal(midLow.populationComparison.percentileEstimate, "5th–25th percentile");
+});
+
+test("population comparison: spread above 9 days highlights high variance against population", () => {
+  const variable = analyze(starts("2025-01-01", [25, 38, 26]));
+  assert.ok(variable.populationComparison);
+  assert.equal(variable.populationComparison.variationComparison.isTypical, false);
+  assert.equal(variable.populationComparison.variationComparison.userSpread, 13);
+});
+
+test("population comparison: insufficient data returns null", () => {
+  const oneCycle = analyze(starts("2025-01-01", [28]));
+  assert.equal(oneCycle.populationComparison, null);
 });

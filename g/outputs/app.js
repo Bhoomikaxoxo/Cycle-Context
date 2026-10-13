@@ -349,9 +349,13 @@ function renderStats() {
   const rangeElement = document.getElementById('latestCycleRange');
   const captionElement = document.getElementById('rangeCaption');
   rangeElement.textContent = range;
-  captionElement.textContent = recentIntervals.length
-    ? 'Calculated from the period start dates you logged.'
-    : 'Cycle lengths appear after two period starts.';
+  if (analysis.populationComparison) {
+    captionElement.textContent = `Calculated from your logs · ${analysis.populationComparison.percentileEstimate} (Bull et al. 2019)`;
+  } else {
+    captionElement.textContent = recentIntervals.length
+      ? 'Calculated from the period start dates you logged.'
+      : 'Cycle lengths appear after two period starts.';
+  }
 
   const band = document.querySelector('.range-band');
   const marker = document.querySelector('.range-dot');
@@ -738,6 +742,150 @@ function renderChangeComparison() {
   `;
 }
 
+function renderPopulationComparison() {
+  const container = document.getElementById('populationCompare');
+  const badge = document.getElementById('populationBadge');
+  if (!container) return;
+
+  const analysis = analyze(entries, { today: localISODate(), rules: RULES });
+  const popComp = analysis.populationComparison;
+
+  if (!popComp) {
+    if (badge) {
+      badge.textContent = 'Need 2+ starts';
+      badge.className = 'population-badge';
+    }
+    container.innerHTML = `
+      <div class="pop-insight-box">
+        <p style="margin:0;color:var(--muted)">Log at least two period start dates to compare your personal cycle distribution with published population research (Bull et al. 2019, n=612,613 cycles).</p>
+      </div>
+    `;
+    return;
+  }
+
+  // Set badge style & label
+  if (badge) {
+    if (popComp.band === 'middle50') {
+      badge.textContent = 'Middle 50% (27–31d)';
+      badge.className = 'population-badge middle50';
+    } else if (popComp.band === 'shorter-50' || popComp.band === 'longer-50') {
+      badge.textContent = popComp.band === 'longer-50' ? '75th–95th percentile' : '5th–25th percentile';
+      badge.className = 'population-badge middle90';
+    } else {
+      badge.textContent = popComp.band === 'longer-90' ? '>95th percentile (>38d)' : '<5th percentile (<23d)';
+      badge.className = 'population-badge outer';
+    }
+  }
+
+  // Distribution density bars calculation (scale 20 to 42 days)
+  const minScale = 20;
+  const maxScale = 42;
+  const scale = val => Math.max(0, Math.min(100, ((val - minScale) / (maxScale - minScale)) * 100));
+
+  const densityBarsHTML = popComp.distribution.map(item => {
+    const is50 = item.length >= popComp.middle50.min && item.length <= popComp.middle50.max;
+    const isUser = item.length >= popComp.userMin && item.length <= popComp.userMax;
+    const heightPct = Math.round((item.percent / 16) * 100);
+    const classes = ['pop-density-bar'];
+    if (is50) classes.push('in-50');
+    if (isUser) classes.push('user-active');
+    return `<div class="${classes.join(' ')}" style="height:${heightPct}%" title="${item.length} days: ${item.percent}% of cycles in study"></div>`;
+  }).join('');
+
+  const band90Left = scale(popComp.middle90.min);
+  const band90Width = scale(popComp.middle90.max) - band90Left;
+
+  const band50Left = scale(popComp.middle50.min);
+  const band50Width = scale(popComp.middle50.max) - band50Left;
+
+  const medianPos = scale(popComp.populationMedian);
+
+  const userBandLeft = scale(popComp.userMin);
+  const userBandWidth = Math.max(2, scale(popComp.userMax) - userBandLeft);
+  const userMedianPos = scale(popComp.userMedian);
+
+  const varContextHTML = popComp.variationComparison ? `
+    <div style="display:flex;align-items:center;gap:8px;padding-top:4px;border-top:1px dashed var(--line);margin-top:8px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--plum);flex-shrink:0"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      <span style="font-size:12px;color:var(--ink)"><strong>Within-person variation:</strong> ${escapeHTML(popComp.variationComparison.message)}</span>
+    </div>
+  ` : '';
+
+  container.innerHTML = `
+    <div class="population-stats-row">
+      <div class="pop-stat-item">
+        <span class="pop-stat-label">Your Median</span>
+        <div class="pop-stat-val">${popComp.userMedian} <small style="font-size:13px;font-weight:400">days</small></div>
+        <span class="pop-stat-sub">Range: ${popComp.userMin}–${popComp.userMax} d (n=${analysis.basedOnCycles})</span>
+      </div>
+      <div class="pop-stat-item">
+        <span class="pop-stat-label">Study Median</span>
+        <div class="pop-stat-val">${popComp.populationMedian} <small style="font-size:13px;font-weight:400">days</small></div>
+        <span class="pop-stat-sub">Bull et al. 2019</span>
+      </div>
+      <div class="pop-stat-item">
+        <span class="pop-stat-label">Middle 50% (IQR)</span>
+        <div class="pop-stat-val">${popComp.middle50.min}–${popComp.middle50.max} <small style="font-size:13px;font-weight:400">days</small></div>
+        <span class="pop-stat-sub">25th to 75th percentile</span>
+      </div>
+      <div class="pop-stat-item">
+        <span class="pop-stat-label">Middle 90%</span>
+        <div class="pop-stat-val">${popComp.middle90.min}–${popComp.middle90.max} <small style="font-size:13px;font-weight:400">days</small></div>
+        <span class="pop-stat-sub">5th to 95th percentile</span>
+      </div>
+    </div>
+
+    <div class="pop-dist-container">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+        <strong style="font-size:12px;color:var(--ink)">Population Distribution &amp; Your Recorded Cycles</strong>
+        <span style="font-size:11px;color:var(--muted)">Scale: 20 to 42+ days</span>
+      </div>
+
+      <div class="pop-dist-track-outer">
+        <div class="pop-density-histogram">
+          ${densityBarsHTML}
+        </div>
+        <div class="pop-range-track">
+          <div class="pop-band-90" style="left:${band90Left}%;width:${band90Width}%" title="Middle 90% (23–38 days)"></div>
+          <div class="pop-band-50" style="left:${band50Left}%;width:${band50Width}%" title="Middle 50% (27–31 days)"></div>
+          <div class="pop-median-mark" style="left:${medianPos}%" title="Population Median: 29.0 days"></div>
+
+          <!-- User overlay -->
+          <div class="pop-user-span" style="left:${userBandLeft}%;width:${userBandWidth}%" title="Your recorded cycle span: ${popComp.userMin}–${popComp.userMax} days"></div>
+          <div class="pop-user-pin" style="left:${userMedianPos}%" title="Your cycle median: ${popComp.userMedian} days"></div>
+        </div>
+      </div>
+
+      <div class="pop-axis-row">
+        <span>20d</span>
+        <span>24d</span>
+        <span>29d (Median)</span>
+        <span>34d</span>
+        <span>38d</span>
+        <span>42d+</span>
+      </div>
+
+      <div class="pop-legend">
+        <div class="pop-legend-item"><span class="pop-legend-swatch band50"></span><span>Middle 50% of population (27–31d)</span></div>
+        <div class="pop-legend-item"><span class="pop-legend-swatch band90"></span><span>Middle 90% of population (23–38d)</span></div>
+        <div class="pop-legend-item"><span class="pop-legend-swatch median-line"></span><span>Population median (29.0d)</span></div>
+        <div class="pop-legend-item"><span class="pop-legend-swatch user-range"></span><span>Your logged span (${popComp.userMin}–${popComp.userMax}d)</span></div>
+        <div class="pop-legend-item"><span class="pop-legend-swatch user-pin"></span><span>Your median (${popComp.userMedian}d)</span></div>
+      </div>
+    </div>
+
+    <div class="pop-insight-box">
+      <div>
+        <strong>Where your cycles land:</strong> ${escapeHTML(popComp.bandLabel)}. ${escapeHTML(popComp.narrative)}
+      </div>
+      ${varContextHTML}
+      <div style="font-size:10px;color:var(--muted);margin-top:4px">
+        ${escapeHTML(popComp.note)} Data source: ${escapeHTML(popComp.source)}.
+      </div>
+    </div>
+  `;
+}
+
 let currentSymptomView = 'timing';
 
 function switchSymptomView(mode) {
@@ -938,6 +1086,7 @@ function render() {
   renderCycleReadiness();
   renderCycleChart();
   renderChangeComparison();
+  renderPopulationComparison();
   renderSymptomPatterns();
   renderInsight();
   renderRecordNotes();
@@ -1276,10 +1425,18 @@ function generateSummary() {
     ? analysis.flags.map(f => `• ${f.title}: ${f.message}`)
     : ['• No out-of-range pattern flags under FIGO 2018 criteria.'];
 
+  const popComp = analysis.populationComparison;
+  const popLines = popComp ? [
+    `• Patient Median: ${popComp.userMedian} days (Population Median: ${popComp.populationMedian} days, Middle 50%: ${popComp.middle50.min}–${popComp.middle50.max} days, Middle 90%: ${popComp.middle90.min}–${popComp.middle90.max} days)`,
+    `• Distribution Position: ${popComp.bandLabel} (${popComp.percentileEstimate})`,
+    popComp.variationComparison ? `• Within-Individual Variation: ${popComp.variationComparison.message}` : ''
+  ].filter(Boolean) : ['• Need 2+ period starts to calculate population comparison.'];
+
   const section = (title, lines) => `${title}\n${lines.join('\n')}`;
   const value = [
     section('CYCLE DATES & LENGTHS', cycleNotes),
     section('PATTERNS WORTH DISCUSSING (FIGO 2018 criteria — pending clinical review)', flagLines),
+    section('POPULATION BENCHMARK CONTEXT (Bull et al. 2019, n=612k cycles)', popLines),
     section('SYMPTOMS, CONTEXT & NOTES', notes.length ? notes : ['• No additional notes recorded.']),
     section('VOICE CHECK-INS', spokenNotes.length ? spokenNotes : ['• No voice check-ins recorded.']),
     section('MEDICAL RECORDS TO DISCUSS', recordNotes.length ? recordNotes : ['• No record notes selected.']),
@@ -1410,6 +1567,9 @@ function renderClinicianBrief() {
     : '<p class="empty-state">No document notes selected for this appointment.</p>';
 
   const questions = [];
+  if (analysis.populationComparison && (analysis.populationComparison.band === 'longer-90' || analysis.populationComparison.band === 'shorter-90')) {
+    questions.push(`“My median cycle length of ${analysis.populationComparison.userMedian} days sits outside the 5th–95th percentile benchmark seen in large published studies (23–38 days). What potential physiological or hormonal factors should we consider exploring?”`);
+  }
   if (analysis.flags.some(f => f.id === 'variable_cycles' || f.id === 'long_cycles')) {
     questions.push(`“My recorded cycle lengths vary by ${analysis.summary ? analysis.summary.spread : '>9'} days. Would you recommend blood work (e.g. TSH, prolactin, free testosterone) or a pelvic ultrasound to investigate potential hormonal factors?”`);
   }
@@ -1484,22 +1644,69 @@ function renderClinicianBrief() {
     </div>
 
     <div class="brief-section">
-      <div class="brief-section-title">2. Context Milestones &amp; Interventions</div>
+      <div class="brief-section-title">2. Population Benchmark Layer (Bull et al. 2019, n=612k)</div>
+      ${(() => {
+        const pop = analysis.populationComparison;
+        if (!pop) return '<p class="empty-state">Need 2 or more period starts to compare with population study data.</p>';
+        return `
+          <div class="clinical-grid">
+            <div class="clinical-metric-card">
+              <div>
+                <div class="clinical-metric-label">Patient vs Study Median</div>
+                <div class="clinical-metric-value">${pop.userMedian}d <span style="font-size:14px;color:var(--muted);font-weight:400">vs ${pop.populationMedian}d</span></div>
+                <div class="clinical-metric-sub">Study mean: ${pop.populationMean}d (Bull et al. 2019)</div>
+              </div>
+              <span class="clinical-status-pill ${pop.band === 'middle50' ? 'normal' : 'info'}">${pop.percentileEstimate}</span>
+            </div>
+            <div class="clinical-metric-card">
+              <div>
+                <div class="clinical-metric-label">Study Middle 50% (IQR)</div>
+                <div class="clinical-metric-value">${pop.middle50.min}–${pop.middle50.max} d</div>
+                <div class="clinical-metric-sub">25th to 75th percentile of cycles</div>
+              </div>
+              <span class="clinical-status-pill info">${pop.bandLabel.split('(')[0].trim()}</span>
+            </div>
+            <div class="clinical-metric-card">
+              <div>
+                <div class="clinical-metric-label">Study Middle 90% Range</div>
+                <div class="clinical-metric-value">${pop.middle90.min}–${pop.middle90.max} d</div>
+                <div class="clinical-metric-sub">5th to 95th percentile of cycles</div>
+              </div>
+              <span class="clinical-status-pill normal">Study reference</span>
+            </div>
+            <div class="clinical-metric-card">
+              <div>
+                <div class="clinical-metric-label">Cycle Spread Context</div>
+                <div class="clinical-metric-value">±${pop.userSpread} d</div>
+                <div class="clinical-metric-sub">${pop.variationComparison ? (pop.variationComparison.isTypical ? 'Within typical variation (≤9d)' : 'Above typical 90% threshold (9d)') : 'Need 2+ cycles'}</div>
+              </div>
+              <span class="clinical-status-pill ${pop.variationComparison?.isTypical ? 'normal' : 'attention'}">${pop.variationComparison?.isTypical ? 'Typical variance' : 'Elevated variance'}</span>
+            </div>
+          </div>
+          <div class="callout" style="margin-top:8px">
+            <strong>Context note:</strong> Aggregated data from 612,613 menstrual cycles (Bull et al., <em>npj Digital Medicine</em> 2019). Provided as an empirical baseline to complement clinical judgment and the patient's individual FIGO metrics.
+          </div>
+        `;
+      })()}
+    </div>
+
+    <div class="brief-section">
+      <div class="brief-section-title">3. Context Milestones &amp; Interventions</div>
       ${interventionHTML}
     </div>
 
     <div class="brief-section">
-      <div class="brief-section-title">3. Reported Symptoms Profile</div>
+      <div class="brief-section-title">4. Reported Symptoms Profile</div>
       ${symptomsHTML}
     </div>
 
     <div class="brief-section">
-      <div class="brief-section-title">4. Medical Records &amp; Documents Selected</div>
+      <div class="brief-section-title">5. Medical Records &amp; Documents Selected</div>
       ${docsHTML}
     </div>
 
     <div class="brief-section">
-      <div class="brief-section-title">5. Prepared Questions for Your Doctor</div>
+      <div class="brief-section-title">6. Prepared Questions for Your Doctor</div>
       ${questionsHTML}
     </div>
   `;

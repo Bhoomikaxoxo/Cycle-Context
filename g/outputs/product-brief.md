@@ -60,6 +60,7 @@ Every item and insight should make its source clear:
 - **You logged** — information entered by the user.
 - **From a report** — text extracted from an uploaded document and confirmed by the user.
 - **Calculated from your logs** — a descriptive statistic or comparison.
+- **Population reference** — aggregated research distribution context (Bull et al., 2019, npj Digital Medicine, n = 612,613 cycles).
 - **Clinician note** — a user-entered or confirmed note attributed to a clinician document.
 
 Never silently convert an extracted phrase into a diagnosis or confirmed medical fact.

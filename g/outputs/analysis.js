@@ -49,6 +49,69 @@ const median = (a) => {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 };
 
+export function comparePopulation(cycles, population = RULES.population) {
+  if (!cycles || !cycles.length || !population) return null;
+  const lens = cycles.map((c) => (typeof c === "number" ? c : c.length));
+  const userMedian = median(lens);
+  const userMin = Math.min(...lens);
+  const userMax = Math.max(...lens);
+  const userSpread = userMax - userMin;
+  const { cycleLength, cycleVariation, source, sampleSize } = population;
+
+  let band = "middle50";
+  let bandLabel = "Within the middle 50% of cycles (27–31 days)";
+  let percentileEstimate = "25th–75th percentile";
+
+  if (userMedian < cycleLength.middle90.min) {
+    band = "shorter-90";
+    bandLabel = `Shorter than 90% of cycles (<${cycleLength.middle90.min} days)`;
+    percentileEstimate = "< 5th percentile";
+  } else if (userMedian > cycleLength.middle90.max) {
+    band = "longer-90";
+    bandLabel = `Longer than 90% of cycles (>${cycleLength.middle90.max} days)`;
+    percentileEstimate = "> 95th percentile";
+  } else if (userMedian < cycleLength.middle50.min) {
+    band = "shorter-50";
+    bandLabel = `Between 5th and 25th percentiles (${cycleLength.middle90.min}–${cycleLength.middle50.min - 1} days)`;
+    percentileEstimate = "5th–25th percentile";
+  } else if (userMedian > cycleLength.middle50.max) {
+    band = "longer-50";
+    bandLabel = `Between 75th and 95th percentiles (${cycleLength.middle50.max + 1}–${cycleLength.middle90.max} days)`;
+    percentileEstimate = "75th–95th percentile";
+  }
+
+  const variationComparison = lens.length >= 2 ? {
+    userSpread,
+    typicalSpread: cycleVariation.typicalSpread,
+    highSpreadThreshold: cycleVariation.highSpreadThreshold,
+    isTypical: userSpread <= cycleVariation.highSpreadThreshold,
+    pctUnderThreshold: cycleVariation.pctUsersUnder9DaysSpread,
+    message: userSpread <= cycleVariation.highSpreadThreshold
+      ? `Your cycle spread of ${userSpread} days aligns with typical individual variation (≤${cycleVariation.highSpreadThreshold} days in ~${cycleVariation.pctUsersUnder9DaysSpread}% of users).`
+      : `Your cycle spread of ${userSpread} days is higher than the ${cycleVariation.highSpreadThreshold}-day threshold observed in ~${cycleVariation.pctUsersUnder9DaysSpread}% of study participants.`
+  } : null;
+
+  return {
+    source,
+    sampleSize,
+    userMedian,
+    userMin,
+    userMax,
+    userSpread,
+    populationMedian: cycleLength.median,
+    populationMean: cycleLength.mean,
+    middle50: cycleLength.middle50,
+    middle90: cycleLength.middle90,
+    distribution: cycleLength.distribution,
+    band,
+    bandLabel,
+    percentileEstimate,
+    variationComparison,
+    narrative: `Your median cycle length is ${userMedian} days. In published population research (${source}), the median is ${cycleLength.median} days, 50% of cycles fall between ${cycleLength.middle50.min} and ${cycleLength.middle50.max} days, and 90% fall between ${cycleLength.middle90.min} and ${cycleLength.middle90.max} days.`,
+    note: "Comparison based on aggregated published study data (Bull et al., 2019). Reflects population statistical distribution, not a clinical target or personal diagnosis."
+  };
+}
+
 export function analyze(entries, { today, rules = RULES } = {}) {
   const t = rules.thresholds;
   const cycles = getCycles(entries).slice(-rules.window);
@@ -96,13 +159,23 @@ export function analyze(entries, { today, rules = RULES } = {}) {
   }
 
   const lens = cycles.map((c) => c.length);
+  const populationComparison = cycles.length >= rules.minCyclesForFlag
+    ? comparePopulation(cycles, rules.population)
+    : null;
+
   return {
     rulesVersion: rules.version,
     confidence,
     basedOnCycles: cycles.length,
     summary: lens.length
-      ? { median: median(lens), min: Math.min(...lens), max: Math.max(...lens) }
+      ? {
+          median: median(lens),
+          min: Math.min(...lens),
+          max: Math.max(...lens),
+          spread: Math.max(...lens) - Math.min(...lens)
+        }
       : null, // show a dash + what's needed, as the walkthrough describes
     flags,
+    populationComparison,
   };
 }
