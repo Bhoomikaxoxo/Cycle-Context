@@ -5,8 +5,7 @@ const DAY = 86400000;
 
 // Parse "YYYY-MM-DD" as UTC midnight so DST never shifts day counts.
 export const parseDay = (s) => {
-  const [y, m, d] = s.split("-").map(Number);
-  return Date.UTC(y, m - 1, d);
+  return Date.UTC(Number(s.slice(0, 4)), Number(s.slice(5, 7)) - 1, Number(s.slice(8, 10)));
 };
 export const daysBetween = (a, b) => Math.round((parseDay(b) - parseDay(a)) / DAY);
 
@@ -21,8 +20,7 @@ const isEvent = (e, event) => {
 const byEvent = (entries, event) =>
   [...new Set(entries.filter((e) => isEvent(e, event)).map((e) => e.date))].sort();
 
-export function getCycles(entries) {
-  const starts = byEvent(entries, "started");
+export function getCycles(entries, starts = byEvent(entries, "started")) {
   return starts.slice(1).map((s, i) => ({
     from: starts[i], to: s, length: daysBetween(starts[i], s),
   }));
@@ -30,9 +28,7 @@ export function getCycles(entries) {
 
 // Pairs each start with the first end on/after it and before the next start.
 // Duration is inclusive (start day counts as day 1).
-export function getBleedingDurations(entries) {
-  const starts = byEvent(entries, "started");
-  const ends = byEvent(entries, "ended");
+export function getBleedingDurations(entries, starts = byEvent(entries, "started"), ends = byEvent(entries, "ended")) {
   return starts.flatMap((s, i) => {
     const next = starts[i + 1] ?? "9999-12-31";
     const end = ends.find((e) => e >= s && e < next);
@@ -114,8 +110,10 @@ export function comparePopulation(cycles, population = RULES.population) {
 
 export function analyze(entries, { today, rules = RULES } = {}) {
   const t = rules.thresholds;
-  const cycles = getCycles(entries).slice(-rules.window);
-  const bleeds = getBleedingDurations(entries).slice(-rules.window);
+  const starts = byEvent(entries, "started");
+  const ends = byEvent(entries, "ended");
+  const cycles = getCycles(entries, starts).slice(-rules.window);
+  const bleeds = getBleedingDurations(entries, starts, ends).slice(-rules.window);
   const confidence = confidenceFor(cycles.length, rules);
   const flags = [];
   const mk = (id, title, message, evidence, rule) =>
@@ -149,7 +147,6 @@ export function analyze(entries, { today, rules = RULES } = {}) {
       `${longBleeds.length} of your last ${bleeds.length} recorded periods lasted more than ${t.bleedingDurationDays.max} days.`,
       { periods: longBleeds }, t.bleedingDurationDays);
 
-  const starts = byEvent(entries, "started");
   if (today && starts.length) {
     const gap = daysBetween(starts.at(-1), today);
     if (gap > t.daysSinceLastStart.max)

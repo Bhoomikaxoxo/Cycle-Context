@@ -200,6 +200,19 @@ export function isNegated(text, matchIndex) {
   return clean.length === 0 || /^[,;\s]*$/.test(clean);
 }
 
+const PERIOD_START_REGEX = /\b(?:my\s+)?periods?\s+(?:has\s+|have\s+)?(?:just\s+|finally\s+|actually\s+|officially\s+)?(?:started|began|come|came)\b|\b(?:just\s+|finally\s+)?(?:started|began)\s+(?:my\s+)?periods?\b|\b(?:started|began)\s+bleeding\b|\bbleeding\s+(?:has\s+)?(?:just\s+)?(?:started|began)\b|\bgot\s+my\s+periods?\b|\bperiods?\s+(?:just\s+)?came\b/gi;
+const PERIOD_END_REGEX = /\b(?:my\s+)?periods?\s+(?:has\s+|have\s+)?(?:just\s+|finally\s+|actually\s+)?(?:ended|stopped|finished)\b|\b(?:ended|stopped|finished)\s+(?:my\s+)?periods?\b|\bbleeding\s+(?:has\s+)?(?:just\s+)?(?:ended|stopped|ceased)\b|\bfinished\s+bleeding\b|\bstopped\s+bleeding\b|\bbleeding\s+has\s+stopped\b|\bwrapped\s+up\b/gi;
+const SECONDARY_END_REGEX = /\b(?:and\s+|then\s+)?(?:it\s+)?(?:ended|finished|stopped|ceased|wrapped\s+up)\b/gi;
+const BARE_START_REGEX = /\b(?:started|began)\s+(?:on\s+)?(?:the\s+\d{1,2}|\d{1,2}|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/gi;
+const BARE_END_REGEX = /\b(?:and\s+)?(?:finished|ended|stopped)\s+(?:on\s+)?(?:the\s+\d{1,2}|\d{1,2}|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/gi;
+const MEDICATION_REGEX = /\b(?:started|changed|stopped|increased|decreased)\s+(?:taking\s+)?(?:a\s+new\s+|my\s+)?medication\b|\bmedication\s+(?:change|changed)\b|\bchanged\s+medication\b/gi;
+const ROUTINE_REGEX = /\b(?:routine|schedule|workout|exercise)\s+(?:change|changed|shifted)\b/gi;
+
+const COMPILED_SYMPTOMS = symptomTerms.map(([title, terms]) => ({
+  title,
+  regexes: terms.map(term => new RegExp(`\\b${term}\\b`, 'gi'))
+}));
+
 export function parseVoiceEvents(text, refDate) {
   const ref = refDate || localISODate();
   const dateMentions = extractDateMentions(text, ref);
@@ -212,26 +225,22 @@ export function parseVoiceEvents(text, refDate) {
   };
 
   // 1. Period start phrases
-  const startRegex = /\b(?:my\s+)?periods?\s+(?:has\s+|have\s+)?(?:just\s+|finally\s+|actually\s+|officially\s+)?(?:started|began|come|came)\b|\b(?:just\s+|finally\s+)?(?:started|began)\s+(?:my\s+)?periods?\b|\b(?:started|began)\s+bleeding\b|\bbleeding\s+(?:has\s+)?(?:just\s+)?(?:started|began)\b|\bgot\s+my\s+periods?\b|\bperiods?\s+(?:just\s+)?came\b/gi;
-  for (const m of text.matchAll(startRegex)) {
+  for (const m of text.matchAll(PERIOD_START_REGEX)) {
     if (!isNegated(text, m.index)) {
       addMatch(m.index, m[0].length, 'period-start', 'Period started');
     }
   }
 
   // 2. Period end phrases
-  const endRegex = /\b(?:my\s+)?periods?\s+(?:has\s+|have\s+)?(?:just\s+|finally\s+|actually\s+)?(?:ended|stopped|finished)\b|\b(?:ended|stopped|finished)\s+(?:my\s+)?periods?\b|\bbleeding\s+(?:has\s+)?(?:just\s+)?(?:ended|stopped|ceased)\b|\bfinished\s+bleeding\b|\bstopped\s+bleeding\b|\bbleeding\s+has\s+stopped\b|\bwrapped\s+up\b/gi;
-  for (const m of text.matchAll(endRegex)) {
+  for (const m of text.matchAll(PERIOD_END_REGEX)) {
     if (!isNegated(text, m.index)) {
       addMatch(m.index, m[0].length, 'period-end', 'Period ended');
     }
   }
 
   // 3. Conjunction / secondary period predicates
-  // e.g. "started on Oct 1 and ended on Oct 4", "began on Oct 2, ended Oct 5", "started Monday, finished Thursday"
   if (rawMatches.some(m => m.kind === 'period-start') || /\b(?:periods?|bleeding)\b/i.test(text)) {
-    const secondaryEndRegex = /\b(?:and\s+|then\s+)?(?:it\s+)?(?:ended|finished|stopped|ceased|wrapped\s+up)\b/gi;
-    for (const m of text.matchAll(secondaryEndRegex)) {
+    for (const m of text.matchAll(SECONDARY_END_REGEX)) {
       if (!rawMatches.some(existing => Math.abs(existing.index - m.index) < 10 && existing.kind === 'period-end') && !isNegated(text, m.index)) {
         addMatch(m.index, m[0].length, 'period-end', 'Period ended');
       }
@@ -240,17 +249,14 @@ export function parseVoiceEvents(text, refDate) {
 
   // Also handle bare "started on..." / "began on..." when no other period-start matched
   if (!rawMatches.some(m => m.kind === 'period-start')) {
-    const bareStartRegex = /\b(?:started|began)\s+(?:on\s+)?(?:the\s+\d{1,2}|\d{1,2}|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/gi;
-    for (const m of text.matchAll(bareStartRegex)) {
+    for (const m of text.matchAll(BARE_START_REGEX)) {
       if (!isNegated(text, m.index)) {
         addMatch(m.index, m[0].length, 'period-start', 'Period started');
         break;
       }
     }
-    // And if bare start matched, look for bare finished/ended
     if (rawMatches.some(m => m.kind === 'period-start')) {
-      const bareEndRegex = /\b(?:and\s+)?(?:finished|ended|stopped)\s+(?:on\s+)?(?:the\s+\d{1,2}|\d{1,2}|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/gi;
-      for (const m of text.matchAll(bareEndRegex)) {
+      for (const m of text.matchAll(BARE_END_REGEX)) {
         if (!isNegated(text, m.index)) {
           addMatch(m.index, m[0].length, 'period-end', 'Period ended');
           break;
@@ -260,21 +266,18 @@ export function parseVoiceEvents(text, refDate) {
   }
 
   // 4. Context phrases
-  const medicationRegex = /\b(?:started|changed|stopped|increased|decreased)\s+(?:taking\s+)?(?:a\s+new\s+|my\s+)?medication\b|\bmedication\s+(?:change|changed)\b|\bchanged\s+medication\b/gi;
-  for (const m of text.matchAll(medicationRegex)) {
+  for (const m of text.matchAll(MEDICATION_REGEX)) {
     addMatch(m.index, m[0].length, 'context', 'Medication change');
   }
 
-  const routineRegex = /\b(?:routine|schedule|workout|exercise)\s+(?:change|changed|shifted)\b/gi;
-  for (const m of text.matchAll(routineRegex)) {
+  for (const m of text.matchAll(ROUTINE_REGEX)) {
     addMatch(m.index, m[0].length, 'context', 'Routine change');
   }
 
   // 5. Symptoms with longest-match subsumption before negation check
   const allCandidateSymptoms = [];
-  symptomTerms.forEach(([title, terms]) => {
-    terms.forEach(term => {
-      const regex = new RegExp(`\\b${term}\\b`, 'gi');
+  COMPILED_SYMPTOMS.forEach(({ title, regexes }) => {
+    regexes.forEach(regex => {
       for (const m of text.matchAll(regex)) {
         allCandidateSymptoms.push({
           index: m.index,

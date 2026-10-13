@@ -143,7 +143,20 @@ function readJSON(key, fallback) {
   }
 }
 
+let cachedTimelineItems = null;
+let cachedPeriodStarts = null;
+let cachedCycleIntervals = null;
+let cachedAnalysis = null;
+
+function invalidateAppCaches() {
+  cachedTimelineItems = null;
+  cachedPeriodStarts = null;
+  cachedCycleIntervals = null;
+  cachedAnalysis = null;
+}
+
 function persistEntries() {
+  invalidateAppCaches();
   localStorage.setItem(ENTRY_KEY, JSON.stringify(entries));
 }
 
@@ -159,8 +172,12 @@ function localISODate(date = new Date()) {
 }
 
 function dayNumber(isoDate) {
-  const [year, month, day] = isoDate.split('-').map(Number);
-  return Date.UTC(year, month - 1, day) / 86_400_000;
+  if (!isoDate || isoDate.length < 10) return 0;
+  return Date.UTC(
+    Number(isoDate.slice(0, 4)),
+    Number(isoDate.slice(5, 7)) - 1,
+    Number(isoDate.slice(8, 10))
+  ) / 86_400_000;
 }
 
 function dateFromDayOffset(days) {
@@ -169,15 +186,21 @@ function dateFromDayOffset(days) {
   return localISODate(date);
 }
 
+const DATE_FORMAT_CACHE = new Map();
 function formatDate(isoDate, options = { month: 'short', day: 'numeric', year: 'numeric' }) {
   if (!isoDate) return '';
-  return new Date(`${isoDate}T12:00:00`).toLocaleDateString(undefined, options);
+  const key = `${isoDate}_${options.month || ''}_${options.day || ''}_${options.year ? 'y' : ''}_${options.weekday || ''}`;
+  let formatted = DATE_FORMAT_CACHE.get(key);
+  if (!formatted) {
+    formatted = new Date(`${isoDate}T12:00:00`).toLocaleDateString(undefined, options);
+    DATE_FORMAT_CACHE.set(key, formatted);
+  }
+  return formatted;
 }
 
+const ESCAPE_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 function escapeHTML(value) {
-  return String(value).replace(/[&<>"']/g, character => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  })[character]);
+  return String(value).replace(/[&<>"']/g, ch => ESCAPE_MAP[ch]);
 }
 
 function saveAndRender() {
@@ -208,6 +231,7 @@ document.getElementById('todayDate').textContent = new Date().toLocaleDateString
 let currentTimelineFilter = 'all';
 
 function getAllTimelineItems() {
+  if (cachedTimelineItems) return cachedTimelineItems;
   const visibleEntries = entries.filter(entry => entry.type !== 'voice-source');
   const docItems = documents.filter(doc => doc.recordDate && doc.showOnTimeline !== false).map(doc => ({
     id: 'doc-' + doc.id,
@@ -220,7 +244,8 @@ function getAllTimelineItems() {
     fileName: doc.name,
     extractionConfirmed: Boolean(doc.extractionConfirmed)
   }));
-  return [...visibleEntries, ...docItems].sort((a, b) => b.date.localeCompare(a.date));
+  cachedTimelineItems = [...visibleEntries, ...docItems].sort((a, b) => b.date.localeCompare(a.date));
+  return cachedTimelineItems;
 }
 
 function timelineMarkup(list) {
@@ -348,17 +373,30 @@ function renderTimelineOnly() {
 }
 
 function periodStarts(list = entries) {
-  return list.filter(entry => entry.type === 'period' && (entry.periodRole === 'start' || entry.title === 'Period started'))
+  if (list === entries && cachedPeriodStarts) return cachedPeriodStarts;
+  const res = list.filter(entry => entry.type === 'period' && (entry.periodRole === 'start' || entry.title === 'Period started'))
     .slice().sort((a, b) => a.date.localeCompare(b.date));
+  if (list === entries) cachedPeriodStarts = res;
+  return res;
 }
 
 function cycleIntervals(list = entries) {
+  if (list === entries && cachedCycleIntervals) return cachedCycleIntervals;
   const starts = periodStarts(list);
-  return starts.slice(1).map((entry, index) => ({
+  const res = starts.slice(1).map((entry, index) => ({
     days: dayNumber(entry.date) - dayNumber(starts[index].date),
     start: starts[index],
     end: entry
   })).filter(interval => interval.days >= 15 && interval.days < 200);
+  if (list === entries) cachedCycleIntervals = res;
+  return res;
+}
+
+function getAnalysis(list = entries) {
+  if (list === entries && cachedAnalysis) return cachedAnalysis;
+  const res = analyze(list, { today: localISODate(), rules: RULES });
+  if (list === entries) cachedAnalysis = res;
+  return res;
 }
 
 function bleedingDurations(list = entries) {
@@ -375,7 +413,7 @@ function bleedingDurations(list = entries) {
 }
 
 function renderStats() {
-  const analysis = analyze(entries, { today: localISODate(), rules: RULES });
+  const analysis = getAnalysis();
   const starts = periodStarts();
   const recentIntervals = cycleIntervals().slice(-4);
   const range = analysis.summary
@@ -804,7 +842,7 @@ function renderPopulationComparison() {
   const badge = document.getElementById('populationBadge');
   if (!container) return;
 
-  const analysis = analyze(entries, { today: localISODate(), rules: RULES });
+  const analysis = getAnalysis();
   const popComp = analysis.populationComparison;
 
   if (!popComp) {
@@ -1102,7 +1140,7 @@ function renderSymptomPatterns() {
 }
 
 function renderInsight() {
-  const analysis = analyze(entries, { today: localISODate(), rules: RULES });
+  const analysis = getAnalysis();
   const target = document.getElementById('summaryInsight');
   if (analysis.flags.length) {
     const flag = analysis.flags[0];
@@ -2114,6 +2152,7 @@ async function handleDocumentFiles(input) {
 }
 
 async function loadDocuments() {
+  invalidateAppCaches();
   try {
     documents = await getAllDocuments();
   } catch {
@@ -2501,6 +2540,7 @@ async function confirmAndApplyExtraction() {
 }
 
 async function updateDocument(id, changes) {
+  invalidateAppCaches();
   const documentRecord = documents.find(item => item.id === id);
   if (!documentRecord) return;
   Object.assign(documentRecord, changes);
@@ -2542,6 +2582,8 @@ async function removeDocument(id) {
 
 async function resetData() {
   if (!confirm('Clear your entries and documents from this device and restore the sample timeline?')) return;
+  invalidateAppCaches();
+  DATE_FORMAT_CACHE.clear();
   localStorage.removeItem(ENTRY_KEY);
   localStorage.removeItem(VOICE_KEY);
   entries = SAMPLE_ENTRIES.slice();

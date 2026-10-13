@@ -26,6 +26,14 @@ const MONTH_MAP = {
   dec: 12, december: 12
 };
 
+const PREFIX_REGEX = /(?:report\s*date|collection\s*date|exam\s*date|date\s*of\s*exam|sample\s*date|test\s*date|specimen\s*date|date)[:\s]+([^\r\n,;]+)/i;
+const ISO_REGEX = /\b(20\d{2})[-/](0[1-9]|1[0-2])[-/](0[1-9]|[12]\d|3[01])\b/;
+const NAMED_DATE_REGEX = /\b(?:(\d{1,2})(?:st|nd|rd|th)?[\s\-_]+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[\s\-_]+(20\d{2})|(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[\s\-_]+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(20\d{2})))\b/i;
+const SLASH_DATE_REGEX = /\b(0?[1-9]|[12]\d|3[01])\/(0?[1-9]|1[0-2])\/(20\d{2})\b/;
+const RANGE_REGEX = /\(?\b(?:(?:follicular|ref(?:erence)?|normal)[:\s]*)?([0-9]+(?:\.[0-9]+)?)\s*[-–—to]+\s*([0-9]+(?:\.[0-9]+)?)\s*\)?/i;
+const PCOM_REGEX = /\b(?:pcom|polycystic\s+ovarian\s+morphology|polycystic\s+appearing\s+ovaries|peripheral\s+follicles)\b/i;
+const TRILAMINAR_REGEX = /\btrilaminar\b/i;
+
 /**
  * Format a Date object into YYYY-MM-DD
  */
@@ -43,16 +51,14 @@ export function extractReportDate(text) {
   if (!text || typeof text !== 'string') return null;
 
   // 1. Look for explicit date prefixes (e.g., "Report Date: 14 Oct 2024", "Date of Exam: 2024-09-18")
-  const prefixRegex = /(?:report\s*date|collection\s*date|exam\s*date|date\s*of\s*exam|sample\s*date|test\s*date|specimen\s*date|date)[:\s]+([^\r\n,;]+)/i;
-  const prefixMatch = text.match(prefixRegex);
+  const prefixMatch = text.match(PREFIX_REGEX);
   if (prefixMatch) {
     const parsed = parseDateString(prefixMatch[1]);
     if (parsed) return { date: parsed, confidence: 'high', raw: prefixMatch[0].trim() };
   }
 
   // 2. Look for ISO dates YYYY-MM-DD
-  const isoRegex = /\b(20\d{2})[-/](0[1-9]|1[0-2])[-/](0[1-9]|[12]\d|3[01])\b/;
-  const isoMatch = text.match(isoRegex);
+  const isoMatch = text.match(ISO_REGEX);
   if (isoMatch) {
     return {
       date: formatISODate(Number(isoMatch[1]), Number(isoMatch[2]), Number(isoMatch[3])),
@@ -62,8 +68,7 @@ export function extractReportDate(text) {
   }
 
   // 3. Look for named month patterns (e.g., "14 Oct 2024", "October 14, 2024")
-  const namedRegex = /\b(?:(\d{1,2})(?:st|nd|rd|th)?[\s\-_]+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[\s\-_]+(20\d{2})|(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[\s\-_]+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(20\d{2})))\b/i;
-  const namedMatch = text.match(namedRegex);
+  const namedMatch = text.match(NAMED_DATE_REGEX);
   if (namedMatch) {
     if (namedMatch[1]) {
       // 14 Oct 2024
@@ -85,8 +90,7 @@ export function extractReportDate(text) {
   }
 
   // 4. Look for DD/MM/YYYY or MM/DD/YYYY
-  const slashRegex = /\b(0?[1-9]|[12]\d|3[01])\/(0?[1-9]|1[0-2])\/(20\d{2})\b/;
-  const slashMatch = text.match(slashRegex);
+  const slashMatch = text.match(SLASH_DATE_REGEX);
   if (slashMatch) {
     const part1 = Number(slashMatch[1]);
     const part2 = Number(slashMatch[2]);
@@ -107,11 +111,11 @@ function parseDateString(str) {
   const clean = str.trim();
 
   // Try ISO
-  const isoMatch = clean.match(/\b(20\d{2})[-/](0[1-9]|1[0-2])[-/](0[1-9]|[12]\d|3[01])\b/);
+  const isoMatch = clean.match(ISO_REGEX);
   if (isoMatch) return formatISODate(Number(isoMatch[1]), Number(isoMatch[2]), Number(isoMatch[3]));
 
   // Try DD Month YYYY or Month DD YYYY
-  const namedMatch = clean.match(/\b(?:(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]+)\s+(20\d{2})|([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(20\d{2}))\b/i);
+  const namedMatch = clean.match(NAMED_DATE_REGEX);
   if (namedMatch) {
     if (namedMatch[1]) {
       const monthKey = namedMatch[2].toLowerCase().slice(0, 3);
@@ -397,7 +401,7 @@ export const CLINICAL_EXTRACTION_DEFINITIONS = [
 function extractReferenceInterval(line) {
   if (!line) return null;
   // Match formats like: (0.40 - 4.20), (15 - 70), (Follicular: 3.5 - 12.5), (0.4 to 4.0), 0.4-4.2
-  const rangeMatch = line.match(/\(?\b(?:(?:follicular|ref(?:erence)?|normal)[:\s]*)?([0-9]+(?:\.[0-9]+)?)\s*[-–—to]+\s*([0-9]+(?:\.[0-9]+)?)\s*\)?/i);
+  const rangeMatch = line.match(RANGE_REGEX);
   if (rangeMatch) {
     const low = rangeMatch[1];
     const high = rangeMatch[2];
@@ -446,7 +450,7 @@ export function extractUltrasoundObservations(text) {
   const observations = [];
   if (!text) return observations;
 
-  if (/\b(?:pcom|polycystic\s+ovarian\s+morphology|polycystic\s+appearing\s+ovaries|peripheral\s+follicles)\b/i.test(text)) {
+  if (PCOM_REGEX.test(text)) {
     observations.push({
       metric: 'Ultrasound Morphology',
       value: 'Features consistent with polycystic ovarian morphology (PCOM) noted on imaging',
@@ -455,7 +459,7 @@ export function extractUltrasoundObservations(text) {
     });
   }
 
-  if (/\btrilaminar\b/i.test(text)) {
+  if (TRILAMINAR_REGEX.test(text)) {
     observations.push({
       metric: 'Endometrial Pattern',
       value: 'Trilaminar pattern noted',
