@@ -8,6 +8,11 @@ import {
   filterMedicationsByWindow,
   filterMedicationsByStatus
 } from './medications.js';
+import {
+  generateCycleSparklineSVG,
+  buildExecutiveSummaryData,
+  formatClinicalDate
+} from './brief-visuals.js';
 
 const CURRENT_SCHEMA_VERSION = 1;
 
@@ -120,6 +125,75 @@ function persistCustomQuestions() {
 
 function persistDisabledQuestions() {
   localStorage.setItem(DISABLED_QUESTIONS_KEY, JSON.stringify(Array.from(disabledQuestionIds)));
+}
+
+const PRINT_PREFS_KEY = 'cycleContextPrintPrefs';
+const DEFAULT_PRINT_PREFS = {
+  patientRef: '',
+  physicianRef: '',
+  compactOnePage: true,
+  sections: {
+    execSummary: true,
+    sparkline: true,
+    figo: true,
+    population: true,
+    meds: true,
+    context: true,
+    symptoms: true,
+    docs: true,
+    agenda: true
+  }
+};
+let printPrefs = readJSON(PRINT_PREFS_KEY, DEFAULT_PRINT_PREFS);
+if (!printPrefs || typeof printPrefs !== 'object') printPrefs = { ...DEFAULT_PRINT_PREFS };
+if (!printPrefs.sections) printPrefs.sections = { ...DEFAULT_PRINT_PREFS.sections };
+
+function persistPrintPrefs() {
+  localStorage.setItem(PRINT_PREFS_KEY, JSON.stringify(printPrefs));
+}
+
+function togglePrintSection(secKey) {
+  if (!printPrefs.sections) printPrefs.sections = { ...DEFAULT_PRINT_PREFS.sections };
+  printPrefs.sections[secKey] = !printPrefs.sections[secKey];
+  persistPrintPrefs();
+  renderClinicianBrief();
+}
+
+function toggleCompactPrint(isCompact) {
+  printPrefs.compactOnePage = Boolean(isCompact);
+  persistPrintPrefs();
+  renderClinicianBrief();
+}
+
+function updatePrintMeta(key, value) {
+  printPrefs[key] = value;
+  persistPrintPrefs();
+  const el = document.getElementById(key === 'patientRef' ? 'headerPatientRef' : 'headerPhysicianRef');
+  if (el) {
+    el.textContent = value.trim() ? value.trim() : (key === 'patientRef' ? 'Patient Journal' : '');
+  }
+}
+
+function updateBriefOptionsUI() {
+  if (!printPrefs || !printPrefs.sections) return;
+  Object.keys(printPrefs.sections).forEach(sec => {
+    const chk = document.getElementById(`secToggle_${sec}`);
+    if (chk) chk.checked = Boolean(printPrefs.sections[sec]);
+  });
+  const compactBtn = document.getElementById('densityCompactBtn');
+  const fullBtn = document.getElementById('densityFullBtn');
+  if (compactBtn && fullBtn) {
+    compactBtn.classList.toggle('active', Boolean(printPrefs.compactOnePage));
+    fullBtn.classList.toggle('active', !printPrefs.compactOnePage);
+  }
+  const patInput = document.getElementById('printPatientRef');
+  if (patInput && patInput.value !== (printPrefs.patientRef || '')) {
+    patInput.value = printPrefs.patientRef || '';
+  }
+  const docInput = document.getElementById('printPhysicianRef');
+  if (docInput && docInput.value !== (printPrefs.physicianRef || '')) {
+    docInput.value = printPrefs.physicianRef || '';
+  }
 }
 
 const symptomTerms = [
@@ -2326,16 +2400,37 @@ function renderClinicianBrief() {
     </div>
   `;
 
+  updateBriefOptionsUI();
+  const execData = buildExecutiveSummaryData({
+    analysis,
+    intervals,
+    durations,
+    medications: summaryMeds,
+    questions: allQuestions.filter(q => !disabledQuestionIds.has(q.id)),
+    documents: selectedDocs
+  });
+
+  const sparklineSVG = generateCycleSparklineSVG(intervals, {
+    width: 680,
+    height: printPrefs.compactOnePage ? 115 : 135
+  });
+
+  container.className = `clinical-brief${printPrefs.compactOnePage ? ' compact-print-mode' : ''}`;
+
+  const patientDisplay = escapeHTML(printPrefs.patientRef?.trim() || 'Patient Record');
+  const physicianDisplay = escapeHTML(printPrefs.physicianRef?.trim() || '');
+
   container.innerHTML = `
     <div class="brief-header">
       <div class="brief-header-top">
         <div>
           <span style="font-size:11px;font-weight:700;letter-spacing:1px;color:var(--plum);text-transform:uppercase">Cycle Context · Clinical Consultation Brief</span>
-          <h2>Patient Cycle &amp; Symptom Summary</h2>
+          <h2>${patientDisplay} · Cycle &amp; Symptom Summary</h2>
+          ${physicianDisplay ? `<div style="font-size:12px;font-weight:600;color:var(--ink);margin-top:2px">Prepared for: ${physicianDisplay}</div>` : ''}
         </div>
         <div class="brief-meta">
-          <strong>Prepared:</strong> ${formatDate(localISODate())}<br>
-          <strong>Observation Window:</strong> ${formatDate(earliestDate)} – ${formatDate(latestDate)} (${starts.length} period start${starts.length === 1 ? '' : 's'})
+          <strong>Prepared:</strong> ${formatClinicalDate(localISODate())}<br>
+          <strong>Observation Window:</strong> ${formatClinicalDate(earliestDate)} to ${formatClinicalDate(latestDate)} (${starts.length} period start${starts.length === 1 ? '' : 's'}, ${intervals.length} interval${intervals.length === 1 ? '' : 's'})
         </div>
       </div>
       <div class="brief-disclaimer">
@@ -2343,7 +2438,63 @@ function renderClinicianBrief() {
       </div>
     </div>
 
-    <div class="brief-section">
+    <!-- Executive Clinical Overview -->
+    <div class="brief-section ${printPrefs.sections.execSummary ? '' : 'is-hidden'}" id="briefSec_execSummary">
+      <div class="brief-executive-summary">
+        <div class="exec-header">
+          <span class="exec-header-title">Executive Clinical Overview</span>
+          <span class="tag ${execData.freqBadge === 'normal' && execData.regularityBadge === 'normal' ? 'green' : 'plum'}" style="font-size:10px">Clinical Baseline</span>
+        </div>
+        <div class="exec-grid">
+          <div class="exec-card">
+            <div class="exec-label">Cycle Frequency</div>
+            <div class="exec-val">${execData.freqCategory}</div>
+            <div class="exec-sub">${execData.freqDetail}</div>
+            <span class="clinical-status-pill ${execData.freqBadge}" style="margin-top:6px">${execData.freqBadge === 'normal' ? 'Normal FIGO' : 'Attention'}</span>
+          </div>
+          <div class="exec-card">
+            <div class="exec-label">Regularity Spread</div>
+            <div class="exec-val">${execData.regularityCategory}</div>
+            <div class="exec-sub">${execData.regularityDetail}</div>
+            <span class="clinical-status-pill ${execData.regularityBadge}" style="margin-top:6px">${execData.regularityBadge === 'normal' ? 'Regular ≤9d' : 'Irregular >9d'}</span>
+          </div>
+          <div class="exec-card">
+            <div class="exec-label">Bleeding Duration</div>
+            <div class="exec-val">${execData.bleedCategory}</div>
+            <div class="exec-sub">${execData.bleedDetail}</div>
+            <span class="clinical-status-pill ${execData.bleedBadge}" style="margin-top:6px">${execData.bleedBadge === 'normal' ? '≤8 days normal' : 'Prolonged'}</span>
+          </div>
+          <div class="exec-card">
+            <div class="exec-label">Active Regimens</div>
+            <div class="exec-val">${execData.activeMedsCount} Active</div>
+            <div class="exec-sub">${escapeHTML(execData.activeMedsSummary)}</div>
+          </div>
+        </div>
+        ${execData.priorityQuestions.length ? `
+          <div class="exec-priority-agenda">
+            <strong class="exec-priority-title">Chief Inquiries for Appointment:</strong>
+            ${execData.priorityQuestions.map((q, i) => `<span>(${i + 1}) ${escapeHTML(q)}</span>`).join(' &nbsp;·&nbsp; ')}
+          </div>
+        ` : ''}
+      </div>
+    </div>
+
+    <!-- Cycle Sparkline Visual -->
+    <div class="brief-section ${printPrefs.sections.sparkline ? '' : 'is-hidden'}" id="briefSec_sparkline">
+      <div class="brief-section-title">Cycle History &amp; Trend Sparkline (${intervals.length} recorded interval${intervals.length === 1 ? '' : 's'})</div>
+      <div class="brief-sparkline-card">
+        ${sparklineSVG}
+        <div class="brief-sparkline-legend">
+          <span class="legend-item"><span class="legend-swatch normal-band"></span> FIGO Normal Frequency Range (24–38 days)</span>
+          <span class="legend-item"><span class="legend-swatch median-line"></span> Population Median 29.0d (Bull et al. 2019)</span>
+          <span class="legend-item"><span class="legend-swatch cycle-bar"></span> Cycle Interval</span>
+          <span class="legend-item"><span class="legend-swatch outlier-bar"></span> Prolonged (>38d) / Shortened (<24d)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- FIGO Menstrual History Metrics -->
+    <div class="brief-section ${printPrefs.sections.figo ? '' : 'is-hidden'}" id="briefSec_figo">
       <div class="brief-section-title">1. FIGO Menstrual History Metrics</div>
       <div class="clinical-grid">
         <div class="clinical-metric-card">
@@ -2381,7 +2532,8 @@ function renderClinicianBrief() {
       </div>
     </div>
 
-    <div class="brief-section">
+    <!-- Population Benchmark Layer -->
+    <div class="brief-section ${printPrefs.sections.population ? '' : 'is-hidden'}" id="briefSec_population">
       <div class="brief-section-title">2. Population Benchmark Layer (Bull et al. 2019, n=612k)</div>
       ${(() => {
         const pop = analysis.populationComparison;
@@ -2428,27 +2580,32 @@ function renderClinicianBrief() {
       })()}
     </div>
 
-    <div class="brief-section">
+    <!-- Medications and Supplements -->
+    <div class="brief-section ${printPrefs.sections.meds ? '' : 'is-hidden'}" id="briefSec_meds">
       <div class="brief-section-title">3. Current Medications &amp; Supplements (${summaryMeds.filter(m => m.includeInSummary !== false).length} selected)</div>
       ${medsBriefHTML}
     </div>
 
-    <div class="brief-section">
+    <!-- Milestones -->
+    <div class="brief-section ${printPrefs.sections.context ? '' : 'is-hidden'}" id="briefSec_context">
       <div class="brief-section-title">4. Context Milestones &amp; Interventions</div>
       ${interventionHTML}
     </div>
 
-    <div class="brief-section">
+    <!-- Symptoms Profile -->
+    <div class="brief-section ${printPrefs.sections.symptoms ? '' : 'is-hidden'}" id="briefSec_symptoms">
       <div class="brief-section-title">5. Reported Symptoms Profile</div>
       ${symptomsHTML}
     </div>
 
-    <div class="brief-section">
+    <!-- Medical Records & Documents -->
+    <div class="brief-section ${printPrefs.sections.docs ? '' : 'is-hidden'}" id="briefSec_docs">
       <div class="brief-section-title">6. Medical Records &amp; Documents Selected</div>
       ${docsHTML}
     </div>
 
-    <div class="brief-section">
+    <!-- Discussion Agenda -->
+    <div class="brief-section ${printPrefs.sections.agenda ? '' : 'is-hidden'}" id="briefSec_agenda">
       <div class="brief-section-title">7. Discussion Agenda for Your Doctor (${allQuestions.filter(q => !disabledQuestionIds.has(q.id)).length} selected)</div>
       ${questionsHTML}
     </div>
@@ -3004,10 +3161,13 @@ async function resetData() {
   localStorage.removeItem(ENTRY_KEY);
   localStorage.removeItem(VOICE_KEY);
   localStorage.removeItem(MEDICATIONS_KEY);
+  localStorage.removeItem(PRINT_PREFS_KEY);
   entries = SAMPLE_ENTRIES.slice();
   voiceNotes = [];
   medications = SAMPLE_MEDICATIONS.slice();
+  printPrefs = { ...DEFAULT_PRINT_PREFS, sections: { ...DEFAULT_PRINT_PREFS.sections } };
   persistMedications();
+  persistPrintPrefs();
   const db = await openDocumentDatabase();
   await new Promise((resolve, reject) => {
     const transaction = db.transaction([DOCUMENT_STORE, DOCUMENT_FILE_STORE], 'readwrite');
@@ -3086,6 +3246,7 @@ async function exportDataBackup() {
       medications,
       customQuestions,
       disabledQuestionIds: Array.from(disabledQuestionIds),
+      printPrefs,
       documents: serializableDocs
     };
 
@@ -3142,6 +3303,11 @@ async function importDataBackup(input) {
     if (Array.isArray(data.disabledQuestionIds)) {
       disabledQuestionIds = new Set(data.disabledQuestionIds);
       persistDisabledQuestions();
+    }
+    if (data.printPrefs && typeof data.printPrefs === 'object') {
+      printPrefs = { ...DEFAULT_PRINT_PREFS, ...data.printPrefs };
+      if (!printPrefs.sections) printPrefs.sections = { ...DEFAULT_PRINT_PREFS.sections };
+      persistPrintPrefs();
     }
 
     if (Array.isArray(data.documents) && data.documents.length) {
@@ -3231,7 +3397,10 @@ Object.assign(window, {
   toggleMedicationStatus,
   toggleMedicationSummaryInclusion,
   handleMedStatusChange,
-  applyMedPreset
+  applyMedPreset,
+  togglePrintSection,
+  toggleCompactPrint,
+  updatePrintMeta
 });
 
 initialize();

@@ -1910,34 +1910,283 @@ main {
 
 /* Print Stylesheet */
 @media print {
-  body { background: #fff !important; color: #000 !important; font-size: 11pt; }
-  aside, .topbar, .header-actions, .summary-view-toggle, .summary-filter-bar, .appointment-toolbar, .toast, .modal-backdrop, .add-question-box, .question-remove-btn, [hidden] {
+  @page {
+    size: letter portrait;
+    margin: 10mm 12mm 10mm 12mm;
+  }
+  
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 10pt !important;
+    line-height: 1.35 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide screen-only chrome */
+  aside, .topbar, .header-row, .header-actions, .summary-view-toggle, .summary-filter-bar,
+  .brief-options-card, .appointment-toolbar, .toast, .modal-backdrop, .add-question-box,
+  .question-remove-btn, .no-print, [hidden], .is-hidden {
     display: none !important;
   }
-  .shell { display: block !important; }
-  main { padding: 0 !important; margin: 0 !important; }
+
+  .shell { display: block !important; margin: 0 !important; padding: 0 !important; }
+  main { padding: 0 !important; margin: 0 !important; max-width: 100% !important; }
   .page { display: none !important; }
-  #page-summary { display: block !important; }
-  #briefViewContainer { display: block !important; margin: 0 !important; }
+  #page-summary { display: block !important; padding: 0 !important; margin: 0 !important; }
+  #briefViewContainer { display: block !important; margin: 0 !important; padding: 0 !important; }
   #rawViewContainer { display: none !important; }
+
   .clinical-brief {
     border: none !important;
     box-shadow: none !important;
     padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    background: transparent !important;
   }
-  .brief-header { border-bottom: 2px solid #000 !important; }
-  .clinical-metric-card {
-    border: 1px solid #ccc !important;
-    background: #fff !important;
+
+  .brief-header {
+    border-bottom: 2pt solid #000000 !important;
+    padding-bottom: 10px !important;
+    margin-bottom: 14px !important;
+  }
+
+  .brief-header h2 {
+    font-size: 16pt !important;
+    color: #000000 !important;
+    margin: 3px 0 !important;
+  }
+
+  .brief-header .brief-meta {
+    font-size: 8.5pt !important;
+    color: #222222 !important;
+    line-height: 1.4 !important;
+  }
+
+  .brief-disclaimer {
+    background: #f7f7f7 !important;
+    border-left: 3pt solid #333333 !important;
+    color: #222222 !important;
+    font-size: 8pt !important;
+    padding: 6px 10px !important;
+    margin-top: 8px !important;
+  }
+
+  /* Sections */
+  .brief-section {
+    margin-top: 14px !important;
     break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .brief-section-title {
+    font-size: 9.5pt !important;
+    font-weight: 700 !important;
+    color: #000000 !important;
+    letter-spacing: 0.5px !important;
+    margin-bottom: 8px !important;
+    border-bottom: 1pt solid #444444 !important;
+    padding-bottom: 3px !important;
+  }
+  .brief-section-title::after { display: none !important; }
+
+  /* Executive Summary Box */
+  .brief-executive-summary {
+    border: 1.5pt solid #222222 !important;
+    background: #fafafa !important;
+    padding: 10px 12px !important;
+    border-radius: 4px !important;
+    margin-bottom: 12px !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .exec-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 8px !important;
+  }
+  .exec-card {
+    border: 1pt solid #cccccc !important;
+    background: #ffffff !important;
+    padding: 6px 8px !important;
+    border-radius: 3px !important;
+  }
+  .exec-label {
+    font-size: 7.5pt !important;
+    font-weight: 700 !important;
+    color: #333333 !important;
+    text-transform: uppercase !important;
+  }
+  .exec-val {
+    font-size: 11pt !important;
+    font-weight: 700 !important;
+    color: #000000 !important;
+    margin: 2px 0 !important;
+  }
+  .exec-sub {
+    font-size: 7.5pt !important;
+    color: #444444 !important;
+    line-height: 1.25 !important;
+  }
+  .exec-priority-agenda {
+    border-top: 1pt dashed #cccccc !important;
+    margin-top: 8px !important;
+    padding-top: 6px !important;
+    font-size: 8pt !important;
+  }
+
+  /* Metric cards */
+  .clinical-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 8px !important;
+    margin-bottom: 6px !important;
+  }
+  .clinical-metric-card {
+    border: 1pt solid #bbbbbb !important;
+    background: #ffffff !important;
+    padding: 6px 8px !important;
+    border-radius: 3px !important;
+    break-inside: avoid;
+  }
+  .clinical-metric-label {
+    font-size: 7.5pt !important;
+    color: #444444 !important;
+  }
+  .clinical-metric-value {
+    font-size: 13pt !important;
+    font-weight: 700 !important;
+    color: #000000 !important;
+    margin: 2px 0 !important;
+  }
+  .clinical-metric-sub {
+    font-size: 7.5pt !important;
+    color: #555555 !important;
+  }
+  .clinical-status-pill {
+    font-size: 7pt !important;
+    padding: 1px 4px !important;
+    border: 1pt solid #444444 !important;
+    background: #eeeeee !important;
+    color: #000000 !important;
+    font-weight: 700 !important;
+  }
+
+  /* Sparkline visual */
+  .brief-sparkline-card {
+    border: 1pt solid #bbbbbb !important;
+    background: #ffffff !important;
+    padding: 8px !important;
+    margin-bottom: 8px !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .brief-sparkline-svg {
+    max-height: 110px !important;
+    width: 100% !important;
+  }
+  .brief-sparkline-legend {
+    font-size: 7.5pt !important;
+    color: #444444 !important;
+    margin-top: 4px !important;
+    display: flex !important;
+    gap: 12px !important;
+  }
+
+  /* Tables */
+  .brief-table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    font-size: 8.5pt !important;
+    break-inside: avoid;
+  }
+  .brief-table th {
+    background: #f0f0f0 !important;
+    color: #000000 !important;
+    border: 1pt solid #999999 !important;
+    padding: 4px 6px !important;
+    font-size: 7.5pt !important;
+  }
+  .brief-table td {
+    border: 1pt solid #cccccc !important;
+    padding: 4px 6px !important;
+    color: #111111 !important;
+  }
+  .brief-table th:first-child, .brief-table td:first-child {
+    display: none !important;
+  }
+
+  /* Questions list */
+  .question-list {
+    gap: 5px !important;
+    margin-top: 4px !important;
   }
   .question-item {
-    border: 1px solid #ccc !important;
-    background: #fff !important;
+    border: 1pt solid #bbbbbb !important;
+    background: #ffffff !important;
+    padding: 5px 8px !important;
     break-inside: avoid;
+    gap: 8px !important;
+    font-size: 8.5pt !important;
   }
   .question-item.disabled {
     display: none !important;
+  }
+  .question-check-wrap input[type="checkbox"] {
+    display: none !important;
+  }
+  .question-check-wrap::before {
+    content: "[✓]";
+    font-weight: 700;
+    font-size: 8pt;
+    color: #000000;
+    margin-right: 4px;
+  }
+
+  /* Callouts in print */
+  .callout {
+    border: 1pt solid #cccccc !important;
+    background: #fafafa !important;
+    color: #333333 !important;
+    font-size: 7.5pt !important;
+    padding: 4px 8px !important;
+  }
+
+  /* Compact 1-Page Mode */
+  .compact-print-mode .brief-header {
+    padding-bottom: 5px !important;
+    margin-bottom: 8px !important;
+  }
+  .compact-print-mode .brief-header h2 {
+    font-size: 13pt !important;
+  }
+  .compact-print-mode .brief-disclaimer {
+    display: none !important;
+  }
+  .compact-print-mode .brief-section {
+    margin-top: 8px !important;
+  }
+  .compact-print-mode .brief-section-title {
+    font-size: 8.5pt !important;
+    margin-bottom: 4px !important;
+  }
+  .compact-print-mode .exec-val, .compact-print-mode .clinical-metric-value {
+    font-size: 11pt !important;
+  }
+  .compact-print-mode .brief-sparkline-svg {
+    max-height: 90px !important;
+  }
+  .compact-print-mode .brief-table td, .compact-print-mode .brief-table th {
+    padding: 2px 4px !important;
+    font-size: 7.5pt !important;
+  }
+  .compact-print-mode .clinical-metric-card {
+    padding: 4px 6px !important;
+  }
+  .compact-print-mode .question-item {
+    padding: 3px 6px !important;
   }
 }
 
@@ -2917,6 +3166,262 @@ main {
 .brief-table tr:hover td {
   background: #fbfcfb;
 }
+
+/* Phase 6: Clinician One-Pager Print & PDF Visual Polish */
+.is-hidden {
+  display: none !important;
+}
+
+/* Print Customizer Options Card */
+.brief-options-card {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+}
+.brief-options-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.brief-options-title {
+  font: 700 16px var(--display);
+  margin: 2px 0 4px;
+  color: var(--ink);
+}
+.brief-options-sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+}
+.brief-options-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Density Switch */
+.density-switch {
+  display: inline-flex;
+  background: #f1f5f2;
+  border-radius: 6px;
+  padding: 3px;
+  border: 1px solid #d9e2db;
+}
+.density-btn {
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 11px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.density-btn.active {
+  background: #ffffff;
+  color: var(--plum-dark);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+/* Options Body & Checkbox Pills */
+.brief-options-body {
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.brief-selector-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  display: block;
+  margin-bottom: 8px;
+}
+.brief-section-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.brief-checkbox-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: 1px solid #d9e2db;
+  border-radius: 20px;
+  background: #fafbfa;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+.brief-checkbox-pill:hover {
+  background: #f1f5f2;
+  border-color: #c4d4c8;
+}
+.brief-checkbox-pill input[type="checkbox"] {
+  accent-color: var(--plum);
+  cursor: pointer;
+}
+
+/* Optional Meta Inputs (Patient Ref & Doctor) */
+.brief-meta-inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--line);
+}
+.meta-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.meta-field label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.meta-field input {
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+  background: #ffffff;
+  color: var(--ink);
+}
+
+/* Executive Clinical Summary Box */
+.brief-executive-summary {
+  background: #fbfbfa;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+}
+.exec-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #edf1ed;
+}
+.exec-header-title {
+  font: 700 13px var(--sans);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--plum-dark);
+}
+.exec-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.exec-card {
+  background: #ffffff;
+  border: 1px solid #e7ebe8;
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.exec-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.exec-val {
+  font: 700 15px var(--sans);
+  color: var(--ink);
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+.exec-sub {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+.exec-priority-agenda {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed #d9e2db;
+  font-size: 12px;
+  color: var(--ink);
+}
+.exec-priority-title {
+  font-weight: 700;
+  color: var(--plum-dark);
+  margin-right: 6px;
+}
+
+/* Visual Sparkline Trend Card */
+.brief-sparkline-card {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.brief-sparkline-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+.brief-sparkline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #f0f3f1;
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend-swatch {
+  width: 12px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.legend-swatch.normal-band {
+  background: #f0f7f2;
+  border: 1px dashed #2d6a4f;
+}
+.legend-swatch.median-line {
+  background: #64748b;
+  height: 2px;
+}
+.legend-swatch.cycle-bar {
+  background: #735264;
+}
+.legend-swatch.outlier-bar {
+  background: #b91c1c;
+}
+
 
 
 

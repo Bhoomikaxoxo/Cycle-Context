@@ -1,6 +1,16 @@
 
 # Rules changelog
 
+## 0.6.0
+- Added Clinician One-Pager Print & PDF Visual Polish.
+  - Executive Clinical Overview card: Synthesizes cycle frequency, regularity spread, bleeding duration, active regimens, and top patient inquiries in a high-density clinical summary box.
+  - Visual Cycle Sparkline & Trend Glyphs: Pure SVG vector sparkline rendering cycle interval bars, FIGO normal frequency corridor (24–38 days), Bull et al. 2019 median guideline (29.0 days), and distinct outlier highlights for prolonged (>38d) and shortened (<24d) intervals.
+  - Interactive One-Pager Customizer toolbar: User-controlled inclusion/exclusion toggles for every section (Executive Summary, Sparkline, FIGO Metrics, Population Study, Regimens, Milestones, Symptoms, Lab Reports, Doctor Agenda).
+  - Print density controls: One-click "Compact 1-Page" vs "Detailed Dossier" layouts to ensure critical facts fit cleanly on a single physical page for doctor visits.
+  - Clinical Header Metadata: Optional Patient Name/Identifier and Clinician/Practice fields seamlessly rendered into clinical brief headers.
+  - Comprehensive `@media print` optimizations: Pure black/grayscale high-contrast typography, removal of all screen chrome and non-printable elements, avoidance of awkward page-breaks (`break-inside: avoid;`), and sharp borders optimized for hospital laser and thermal printers.
+  - Full data backup & portability: Print preferences persisted on-device in `localStorage` and included in JSON backup export/restore.
+
 ## 0.5.0
 - Added Medication & Supplement Regimen Tracker.
   - Client-side, local-first privacy: Regimens stored strictly on-device in browser `localStorage`.
