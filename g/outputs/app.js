@@ -1,6 +1,13 @@
 import { RULES, analyze } from './analysis.js';
 import { parseVoiceEvents } from './extraction.js';
 import { extractReportDetails, extractReportDate } from './report-extraction.js';
+import {
+  COMMON_MEDICATION_PRESETS,
+  calculateRegimenDuration,
+  formatRegimenLine,
+  filterMedicationsByWindow,
+  filterMedicationsByStatus
+} from './medications.js';
 
 const CURRENT_SCHEMA_VERSION = 1;
 
@@ -53,6 +60,7 @@ const SAMPLE_ENTRIES = [
 
 const ENTRY_KEY = 'cycleContextEntries';
 const VOICE_KEY = 'cycleContextVoiceNotes';
+const MEDICATIONS_KEY = 'cycleContextMedications';
 const CUSTOM_QUESTIONS_KEY = 'cycleContextCustomQuestions';
 const DISABLED_QUESTIONS_KEY = 'cycleContextDisabledQuestions';
 const DOCUMENT_DB = 'cycle-context-private-records';
@@ -60,8 +68,39 @@ const DOCUMENT_STORE = 'documents';
 const DOCUMENT_FILE_STORE = 'document-files';
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 
+const SAMPLE_MEDICATIONS = [
+  {
+    id: 'med-sample-1',
+    name: 'Myo-Inositol',
+    category: 'supplement',
+    dosage: '2,000 mg',
+    frequency: 'Twice daily with meals',
+    startDate: '2026-06-15',
+    endDate: null,
+    status: 'active',
+    notes: '40:1 Myo to D-Chiro blend for ovulatory support and insulin sensitivity',
+    includeInSummary: true,
+    createdAt: '2026-06-15T09:00:00Z'
+  },
+  {
+    id: 'med-sample-2',
+    name: 'Metformin',
+    category: 'medication',
+    dosage: '500 mg',
+    frequency: 'Once daily with dinner',
+    startDate: '2026-08-01',
+    endDate: null,
+    status: 'active',
+    notes: 'Prescribed by Dr. Mehta for cycle length regularity',
+    includeInSummary: true,
+    createdAt: '2026-08-01T10:00:00Z'
+  }
+];
+
 let entries = readJSON(ENTRY_KEY, SAMPLE_ENTRIES);
 let voiceNotes = readJSON(VOICE_KEY, []);
+let medications = readJSON(MEDICATIONS_KEY, SAMPLE_MEDICATIONS);
+let currentEditingMedId = null;
 let customQuestions = readJSON(CUSTOM_QUESTIONS_KEY, []);
 let disabledQuestionIds = new Set(readJSON(DISABLED_QUESTIONS_KEY, []));
 let currentType = 'period';
@@ -164,6 +203,11 @@ function persistVoiceNotes() {
   localStorage.setItem(VOICE_KEY, JSON.stringify(voiceNotes));
 }
 
+function persistMedications() {
+  invalidateAppCaches();
+  localStorage.setItem(MEDICATIONS_KEY, JSON.stringify(medications));
+}
+
 function localISODate(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -217,7 +261,10 @@ function go(page) {
   });
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (page === 'summary') generateSummary();
-  if (page === 'records') renderRecordNotes();
+  if (page === 'records') {
+    renderRecordNotes();
+    renderMedications();
+  }
 }
 
 document.querySelectorAll('.nav button').forEach(button => {
@@ -244,7 +291,18 @@ function getAllTimelineItems() {
     fileName: doc.name,
     extractionConfirmed: Boolean(doc.extractionConfirmed)
   }));
-  cachedTimelineItems = [...visibleEntries, ...docItems].sort((a, b) => b.date.localeCompare(a.date));
+  const medItems = medications.filter(m => m.startDate).map(m => ({
+    id: 'med-' + m.id,
+    type: 'medication',
+    category: m.category || 'medication',
+    status: m.status || 'active',
+    date: m.startDate,
+    title: `${m.name}${m.dosage ? ` (${m.dosage})` : ''}`,
+    detail: `${m.frequency ? `${m.frequency} · ` : ''}Started ${formatDate(m.startDate)}${m.notes ? ` — ${m.notes}` : ''}`,
+    medId: m.id,
+    medicationObj: m
+  }));
+  cachedTimelineItems = [...visibleEntries, ...docItems, ...medItems].sort((a, b) => b.date.localeCompare(a.date));
   return cachedTimelineItems;
 }
 
@@ -263,8 +321,9 @@ function timelineMarkup(list) {
     const hasMarker = items.some(e => e.type === 'context');
     const hasPeriod = items.some(e => e.type === 'period');
     const hasDoc = items.some(e => e.type === 'document');
+    const hasMed = items.some(e => e.type === 'medication');
 
-    const eventDotClass = hasDoc ? 'lab-report' : hasMarker ? 'marker' : '';
+    const eventDotClass = hasDoc ? 'lab-report' : hasMed ? 'medication-event' : hasMarker ? 'marker' : '';
     const formattedDate = formatDate(dateStr, { month: 'short', day: 'numeric' });
     const year = new Date(`${dateStr}T12:00:00`).getFullYear();
 
@@ -281,6 +340,22 @@ function timelineMarkup(list) {
           <div class="timeline-day-entry-tags">
             ${provenanceBadge}
             <button class="text-button timeline-source" onclick="downloadDocumentById('${entry.documentId}')">Download</button>
+            <button class="text-button timeline-source" onclick="go('records')">View in records</button>
+          </div>
+        </div>`;
+      }
+
+      if (entry.type === 'medication') {
+        const isSupp = entry.category === 'supplement';
+        const statusClass = entry.status || 'active';
+        return `<div class="timeline-day-entry medication-entry">
+          <div class="timeline-day-entry-main">
+            <strong>${escapeHTML(entry.title)}</strong>
+            ${entry.detail ? `<span class="timeline-entry-note">${escapeHTML(entry.detail)}</span>` : ''}
+          </div>
+          <div class="timeline-day-entry-tags">
+            <span class="tag ${isSupp ? 'supp-tag' : 'med-tag'}">${isSupp ? 'Supplement' : 'Medication'}</span>
+            <span class="med-status-pill ${statusClass}" style="font-size:10px">${statusClass}</span>
             <button class="text-button timeline-source" onclick="go('records')">View in records</button>
           </div>
         </div>`;
@@ -359,6 +434,8 @@ function renderTimelineOnly() {
     filtered = allItems.filter(item => item.type === 'symptom');
   } else if (currentTimelineFilter === 'context') {
     filtered = allItems.filter(item => item.type === 'context');
+  } else if (currentTimelineFilter === 'medication') {
+    filtered = allItems.filter(item => item.type === 'medication');
   } else if (currentTimelineFilter === 'document') {
     filtered = allItems.filter(item => item.type === 'document');
   }
@@ -1173,6 +1250,279 @@ function renderRecordNotes() {
     : '<p class="empty-state">Your saved notes and reviewed voice check-ins will appear here.</p>';
 }
 
+function renderMedications() {
+  const container = document.getElementById('medicationsList');
+  const countEl = document.getElementById('medicationCount');
+  if (!container) return;
+
+  renderMedicationPresets();
+
+  const activeMeds = medications.filter(m => (m.status || 'active') === 'active');
+  if (countEl) {
+    countEl.textContent = `${activeMeds.length} active · ${medications.length} total`;
+  }
+
+  if (!medications.length) {
+    container.innerHTML = `<div class="empty-state" style="grid-column:1/-1;padding:24px 0">
+      <p style="margin-bottom:12px">No medications or supplements logged yet. Keep your daily prescriptions, vitamins, and dosages in one private list.</p>
+      <button class="btn primary" onclick="openMedicationModal()">＋ Add your first regimen</button>
+    </div>`;
+    return;
+  }
+
+  const sortedMeds = medications.slice().sort((a, b) => {
+    const aActive = (a.status || 'active') === 'active' ? 1 : 0;
+    const bActive = (b.status || 'active') === 'active' ? 1 : 0;
+    if (aActive !== bActive) return bActive - aActive;
+    return (b.startDate || '').localeCompare(a.startDate || '');
+  });
+
+  container.innerHTML = sortedMeds.map(m => {
+    const duration = calculateRegimenDuration(m.startDate, m.endDate, localISODate());
+    const status = m.status || 'active';
+    const isIncluded = m.includeInSummary !== false;
+    const dateRangeStr = m.endDate
+      ? `${formatDate(m.startDate)} – ${formatDate(m.endDate)}`
+      : `Since ${formatDate(m.startDate)}`;
+
+    return `
+      <div class="med-item-card ${status}">
+        <div class="med-item-head">
+          <div class="med-title-group">
+            <span class="med-name">${escapeHTML(m.name)}</span>
+            <span class="med-category-pill ${m.category || 'medication'}">${escapeHTML(m.category || 'medication')}</span>
+          </div>
+          <span class="med-status-pill ${status}">${status}</span>
+        </div>
+        <div class="med-details">
+          <div class="med-dosage-line">${escapeHTML(m.dosage || 'Standard dose')}${m.frequency ? ` · ${escapeHTML(m.frequency)}` : ''}</div>
+          <div class="med-timing-line">${dateRangeStr}</div>
+          <div class="med-duration-line">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            ${duration.durationText}
+          </div>
+          ${m.notes ? `<div class="med-notes-line">${escapeHTML(m.notes)}</div>` : ''}
+        </div>
+        <div class="med-item-foot">
+          <label class="med-summary-toggle" title="Include in Clinician Consultation Brief">
+            <input type="checkbox" ${isIncluded ? 'checked' : ''} onchange="toggleMedicationSummaryInclusion('${m.id}')">
+            <span>In visit brief</span>
+          </label>
+          <div class="med-actions-group">
+            <button class="med-action-btn" onclick="toggleMedicationStatus('${m.id}')" title="Change active/pause/complete status">
+              ${status === 'active' ? 'Pause' : status === 'paused' ? 'Resume' : 'Reactivate'}
+            </button>
+            <button class="med-action-btn" onclick="openMedicationModal('${m.id}')">Edit</button>
+            <button class="med-action-btn danger" onclick="deleteMedication('${m.id}')" title="Delete regimen">Delete</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderMedicationPresets() {
+  const container = document.getElementById('medPresetChips');
+  if (!container) return;
+
+  container.innerHTML = COMMON_MEDICATION_PRESETS.map(p => `
+    <button type="button" class="med-preset-chip" onclick="applyMedPreset('${escapeHTML(p.name)}')">
+      ＋ ${escapeHTML(p.name)}
+    </button>
+  `).join('');
+}
+
+function applyMedPreset(presetName) {
+  const preset = COMMON_MEDICATION_PRESETS.find(p => p.name === presetName);
+  if (!preset) return;
+  openMedicationModal(null, preset);
+}
+
+function openMedicationModal(medId = null, preset = null) {
+  currentEditingMedId = medId;
+  const modal = document.getElementById('medicationModalBackdrop');
+  const titleEl = document.getElementById('medicationModalTitle');
+  const nameEl = document.getElementById('medName');
+  const catEl = document.getElementById('medCategory');
+  const statusEl = document.getElementById('medStatus');
+  const dosageEl = document.getElementById('medDosage');
+  const freqEl = document.getElementById('medFrequency');
+  const startEl = document.getElementById('medStartDate');
+  const endEl = document.getElementById('medEndDate');
+  const notesEl = document.getElementById('medNotes');
+  const contextCheck = document.getElementById('medCreateContextMarker');
+  const summaryCheck = document.getElementById('medIncludeInSummary');
+
+  if (medId) {
+    const med = medications.find(m => m.id === medId);
+    if (!med) return;
+    titleEl.textContent = 'Edit Medication / Supplement';
+    nameEl.value = med.name || '';
+    catEl.value = med.category || 'medication';
+    statusEl.value = med.status || 'active';
+    dosageEl.value = med.dosage || '';
+    freqEl.value = med.frequency || '';
+    startEl.value = med.startDate || localISODate();
+    endEl.value = med.endDate || '';
+    notesEl.value = med.notes || '';
+    contextCheck.checked = false;
+    summaryCheck.checked = med.includeInSummary !== false;
+  } else if (preset) {
+    titleEl.textContent = `Add ${preset.name}`;
+    nameEl.value = preset.name;
+    catEl.value = preset.category || 'medication';
+    statusEl.value = 'active';
+    dosageEl.value = preset.defaultDosage || '';
+    freqEl.value = preset.defaultFrequency || '';
+    startEl.value = localISODate();
+    endEl.value = '';
+    notesEl.value = preset.notes || '';
+    contextCheck.checked = true;
+    summaryCheck.checked = true;
+  } else {
+    titleEl.textContent = 'Add Medication / Supplement';
+    nameEl.value = '';
+    catEl.value = 'medication';
+    statusEl.value = 'active';
+    dosageEl.value = '';
+    freqEl.value = 'Once daily';
+    startEl.value = localISODate();
+    endEl.value = '';
+    notesEl.value = '';
+    contextCheck.checked = true;
+    summaryCheck.checked = true;
+  }
+
+  handleMedStatusChange(statusEl.value);
+  modal.classList.add('show');
+}
+
+function closeMedicationModal() {
+  document.getElementById('medicationModalBackdrop').classList.remove('show');
+  currentEditingMedId = null;
+}
+
+function handleMedStatusChange(status) {
+  const endInput = document.getElementById('medEndDate');
+  if (status === 'completed' && endInput && !endInput.value) {
+    endInput.value = localISODate();
+  }
+}
+
+function saveMedication() {
+  const name = document.getElementById('medName').value.trim();
+  const category = document.getElementById('medCategory').value;
+  const status = document.getElementById('medStatus').value;
+  const dosage = document.getElementById('medDosage').value.trim();
+  const frequency = document.getElementById('medFrequency').value.trim();
+  const startDate = document.getElementById('medStartDate').value || localISODate();
+  const endDate = document.getElementById('medEndDate').value.trim() || null;
+  const notes = document.getElementById('medNotes').value.trim();
+  const createContextMarker = document.getElementById('medCreateContextMarker').checked;
+  const includeInSummary = document.getElementById('medIncludeInSummary').checked;
+
+  if (!name) {
+    alert('Please enter a medication or supplement name.');
+    return;
+  }
+
+  if (currentEditingMedId) {
+    const idx = medications.findIndex(m => m.id === currentEditingMedId);
+    if (idx !== -1) {
+      medications[idx] = {
+        ...medications[idx],
+        name,
+        category,
+        status,
+        dosage,
+        frequency,
+        startDate,
+        endDate,
+        notes,
+        includeInSummary,
+        updatedAt: new Date().toISOString()
+      };
+    }
+  } else {
+    const newMed = {
+      id: 'med-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+      name,
+      category,
+      status,
+      dosage,
+      frequency,
+      startDate,
+      endDate,
+      notes,
+      includeInSummary,
+      createdAt: new Date().toISOString()
+    };
+    medications.unshift(newMed);
+
+    if (createContextMarker) {
+      const milestoneTitle = `${category === 'medication' ? 'Medication' : 'Supplement'} started: ${name}${dosage ? ` (${dosage})` : ''}`;
+      const existingEntry = entries.find(e => e.date === startDate && e.title === milestoneTitle);
+      if (!existingEntry) {
+        entries.unshift({
+          schemaVersion: CURRENT_SCHEMA_VERSION,
+          date: startDate,
+          type: 'context',
+          title: milestoneTitle,
+          detail: notes || (frequency ? `Dose: ${dosage || 'standard'} · ${frequency}` : 'Logged with medication tracker')
+        });
+        persistEntries();
+      }
+    }
+  }
+
+  persistMedications();
+  closeMedicationModal();
+  saveAndRender();
+  renderMedications();
+  renderClinicianBrief();
+  toast(currentEditingMedId ? 'Regimen updated' : 'Regimen saved to your records');
+}
+
+function deleteMedication(id) {
+  const med = medications.find(m => m.id === id);
+  if (!med) return;
+  if (!confirm(`Delete ${med.name} from your medications list?`)) return;
+
+  medications = medications.filter(m => m.id !== id);
+  persistMedications();
+  saveAndRender();
+  renderMedications();
+  renderClinicianBrief();
+  toast('Regimen deleted');
+}
+
+function toggleMedicationStatus(id) {
+  const med = medications.find(m => m.id === id);
+  if (!med) return;
+  const current = med.status || 'active';
+  const next = current === 'active' ? 'paused' : current === 'paused' ? 'completed' : 'active';
+  med.status = next;
+  if (next === 'completed' && !med.endDate) {
+    med.endDate = localISODate();
+  } else if (next === 'active') {
+    med.endDate = null;
+  }
+  persistMedications();
+  saveAndRender();
+  renderMedications();
+  renderClinicianBrief();
+  toast(`${med.name} set to ${next}`);
+}
+
+function toggleMedicationSummaryInclusion(id) {
+  const med = medications.find(m => m.id === id);
+  if (!med) return;
+  med.includeInSummary = !(med.includeInSummary !== false);
+  persistMedications();
+  renderClinicianBrief();
+  generateSummary();
+}
+
 function render() {
   const allItems = getAllTimelineItems();
   document.getElementById('recentTimeline').innerHTML = timelineMarkup(allItems.slice(0, 4));
@@ -1185,8 +1535,10 @@ function render() {
   renderSymptomPatterns();
   renderInsight();
   renderRecordNotes();
+  renderMedications();
   renderClinicianBrief();
-  document.getElementById('recordSummaryCount').textContent = `${documents.length} file${documents.length === 1 ? '' : 's'} · ${entries.filter(entry => entry.type === 'record').length} note${entries.filter(entry => entry.type === 'record').length === 1 ? '' : 's'}`;
+  const activeMedsCount = medications.filter(m => (m.status || 'active') === 'active').length;
+  document.getElementById('recordSummaryCount').textContent = `${documents.length} file${documents.length === 1 ? '' : 's'} · ${activeMedsCount} active regimen${activeMedsCount === 1 ? '' : 's'}`;
 }
 
 function openLog(type) {
@@ -1587,8 +1939,18 @@ function updateSummaryFilterUI() {
   }
 }
 
-function getConsolidatedQuestions(analysis, contextMarkers) {
+function getConsolidatedQuestions(analysis, contextMarkers, summaryMeds = []) {
   const suggested = [];
+
+  if (summaryMeds && summaryMeds.some(m => (m.status || 'active') === 'active')) {
+    const medNames = summaryMeds.filter(m => (m.status || 'active') === 'active').map(m => m.name).slice(0, 2).join(' and ');
+    suggested.push({
+      id: 'medication_review',
+      text: `“I am currently taking ${medNames}. How should we evaluate tolerability, dosage timing, and its potential influence on my cycle patterns?”`,
+      tag: 'Regimen Review',
+      tagClass: 'info'
+    });
+  }
 
   if (analysis.populationComparison && (analysis.populationComparison.band === 'longer-90' || analysis.populationComparison.band === 'shorter-90')) {
     suggested.push({
@@ -1711,6 +2073,12 @@ function generateSummary() {
     .slice().reverse()
     .map(note => `• ${formatDate(note.date)} — “${note.text}”`);
 
+  const summaryMeds = filterMedicationsByWindow(medications, minDate, maxDate);
+  const selectedMeds = summaryMeds.filter(m => m.includeInSummary !== false);
+  const medNotes = selectedMeds.length
+    ? selectedMeds.map(m => formatRegimenLine(m, localISODate()))
+    : ['• No medications or supplements selected for this observation window.'];
+
   const selectedDocuments = summaryDocs.filter(document => document.includeInSummary && ((document.notes && document.notes.trim()) || (document.keyFinding && document.keyFinding.trim())));
   const recordNotes = selectedDocuments.map(document => {
     const parts = [];
@@ -1733,7 +2101,7 @@ function generateSummary() {
   ].filter(Boolean) : ['• Need 2+ period starts in window to calculate population comparison.'];
 
   const contextMarkers = summaryEntries.filter(e => e.type === 'context').sort((a, b) => b.date.localeCompare(a.date));
-  const allQuestions = getConsolidatedQuestions(analysis, contextMarkers);
+  const allQuestions = getConsolidatedQuestions(analysis, contextMarkers, summaryMeds);
   const activeQuestions = allQuestions.filter(q => !disabledQuestionIds.has(q.id));
   const questionLines = activeQuestions.length
     ? activeQuestions.map(q => `• ${q.text}`)
@@ -1748,7 +2116,9 @@ function generateSummary() {
     section('CYCLE DATES & LENGTHS', cycleNotes),
     section('PATTERNS WORTH DISCUSSING (FIGO 2018 criteria — pending clinical review)', flagLines),
     section('POPULATION BENCHMARK CONTEXT (Bull et al. 2019, n=612k cycles)', popLines),
-    section('SYMPTOMS, CONTEXT & NOTES', notes.length ? notes : ['• No additional notes recorded in window.']),
+    section('CURRENT MEDICATIONS & SUPPLEMENTS', medNotes),
+    section('CONTEXT MILESTONES & INTERVENTIONS', contextMarkers.length ? contextMarkers.map(m => `• ${formatDate(m.date)}: ${m.title} — ${m.detail || 'Marked by you'}`) : ['• No context milestones recorded in window.']),
+    section('SYMPTOMS & CHECK-INS', notes.length ? notes : ['• No symptoms recorded in window.']),
     section('VOICE CHECK-INS', spokenNotes.length ? spokenNotes : ['• No voice check-ins recorded in window.']),
     section('MEDICAL RECORDS TO DISCUSS', recordNotes.length ? recordNotes : ['• No record notes selected in window.']),
     section('QUESTIONS & DISCUSSION AGENDA FOR YOUR DOCTOR', questionLines)
@@ -1882,7 +2252,49 @@ function renderClinicianBrief() {
     ? `<ul style="margin:8px 0 0 18px;padding:0;font-size:13px;color:var(--ink)">${selectedDocs.map(d => `<li style="margin-bottom:6px"><strong>${escapeHTML(d.name)}</strong>${d.category ? ` <span class="tag lab-tag" style="font-size:10px;padding:2px 7px">${escapeHTML(d.category)}</span>` : ''}${d.extractionConfirmed ? ` <span class="tag lab-tag" style="font-size:10px;padding:2px 7px">Extracted from report (confirmed by you)</span>` : ''}${d.recordDate ? ` (${formatDate(d.recordDate)})` : ''}: ${d.keyFinding ? `<span style="color:#0369a1;font-weight:600">${escapeHTML(d.keyFinding)}</span>${d.notes ? ' · ' : ''}` : ''}${escapeHTML(d.notes || '')}</li>`).join('')}</ul>`
     : '<p class="empty-state">No document notes selected for this appointment window.</p>';
 
-  const allQuestions = getConsolidatedQuestions(analysis, contextMarkers);
+  const { minDate, maxDate } = getSummaryDateBounds();
+  const summaryMeds = filterMedicationsByWindow(medications, minDate, maxDate);
+  let medsBriefHTML = '<p class="empty-state">No medications or supplements recorded in this appointment observation window.</p>';
+  if (summaryMeds.length) {
+    const medRows = summaryMeds.map(m => {
+      const duration = calculateRegimenDuration(m.startDate, m.endDate, localISODate());
+      const isIncluded = m.includeInSummary !== false;
+      const statusClass = m.status || 'active';
+      return `<tr>
+        <td style="width:36px;text-align:center">
+          <input type="checkbox" id="chk_med_${m.id}" ${isIncluded ? 'checked' : ''} onchange="toggleMedicationSummaryInclusion('${m.id}')" aria-label="Include ${escapeHTML(m.name)} in brief">
+        </td>
+        <td>
+          <strong>${escapeHTML(m.name)}</strong>
+          <span class="med-category-pill ${m.category || 'medication'}" style="margin-left:6px">${escapeHTML(m.category || 'medication')}</span>
+          ${m.notes ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${escapeHTML(m.notes)}</div>` : ''}
+        </td>
+        <td><strong>${escapeHTML(m.dosage || '—')}</strong><br><small style="color:var(--muted)">${escapeHTML(m.frequency || 'Daily')}</small></td>
+        <td>
+          <span class="med-status-pill ${statusClass}">${statusClass}</span>
+          <div style="font-size:11px;color:var(--plum);margin-top:3px">${duration.durationText}</div>
+        </td>
+        <td style="font-size:11px;color:var(--muted)">
+          ${m.endDate ? `${formatDate(m.startDate)} – ${formatDate(m.endDate)}` : `Since ${formatDate(m.startDate)}`}
+        </td>
+      </tr>`;
+    }).join('');
+
+    medsBriefHTML = `<table class="brief-table">
+      <thead>
+        <tr>
+          <th style="width:36px">Include</th>
+          <th>Regimen &amp; Notes</th>
+          <th>Dosage &amp; Timing</th>
+          <th>Status &amp; Duration</th>
+          <th>Start / End</th>
+        </tr>
+      </thead>
+      <tbody>${medRows}</tbody>
+    </table>`;
+  }
+
+  const allQuestions = getConsolidatedQuestions(analysis, contextMarkers, summaryMeds);
   const questionsHTML = `
     <div class="question-list">
       ${allQuestions.map((q, idx) => {
@@ -2017,22 +2429,27 @@ function renderClinicianBrief() {
     </div>
 
     <div class="brief-section">
-      <div class="brief-section-title">3. Context Milestones &amp; Interventions</div>
+      <div class="brief-section-title">3. Current Medications &amp; Supplements (${summaryMeds.filter(m => m.includeInSummary !== false).length} selected)</div>
+      ${medsBriefHTML}
+    </div>
+
+    <div class="brief-section">
+      <div class="brief-section-title">4. Context Milestones &amp; Interventions</div>
       ${interventionHTML}
     </div>
 
     <div class="brief-section">
-      <div class="brief-section-title">4. Reported Symptoms Profile</div>
+      <div class="brief-section-title">5. Reported Symptoms Profile</div>
       ${symptomsHTML}
     </div>
 
     <div class="brief-section">
-      <div class="brief-section-title">5. Medical Records &amp; Documents Selected</div>
+      <div class="brief-section-title">6. Medical Records &amp; Documents Selected</div>
       ${docsHTML}
     </div>
 
     <div class="brief-section">
-      <div class="brief-section-title">6. Discussion Agenda for Your Doctor (${allQuestions.filter(q => !disabledQuestionIds.has(q.id)).length} selected)</div>
+      <div class="brief-section-title">7. Discussion Agenda for Your Doctor (${allQuestions.filter(q => !disabledQuestionIds.has(q.id)).length} selected)</div>
       ${questionsHTML}
     </div>
   `;
@@ -2586,8 +3003,11 @@ async function resetData() {
   DATE_FORMAT_CACHE.clear();
   localStorage.removeItem(ENTRY_KEY);
   localStorage.removeItem(VOICE_KEY);
+  localStorage.removeItem(MEDICATIONS_KEY);
   entries = SAMPLE_ENTRIES.slice();
   voiceNotes = [];
+  medications = SAMPLE_MEDICATIONS.slice();
+  persistMedications();
   const db = await openDocumentDatabase();
   await new Promise((resolve, reject) => {
     const transaction = db.transaction([DOCUMENT_STORE, DOCUMENT_FILE_STORE], 'readwrite');
@@ -2663,6 +3083,7 @@ async function exportDataBackup() {
       exportDate: new Date().toISOString(),
       entries,
       voiceNotes,
+      medications,
       customQuestions,
       disabledQuestionIds: Array.from(disabledQuestionIds),
       documents: serializableDocs
@@ -2709,6 +3130,10 @@ async function importDataBackup(input) {
     if (Array.isArray(data.voiceNotes)) {
       voiceNotes = data.voiceNotes;
       persistVoiceNotes();
+    }
+    if (Array.isArray(data.medications)) {
+      medications = data.medications;
+      persistMedications();
     }
     if (Array.isArray(data.customQuestions)) {
       customQuestions = data.customQuestions;
@@ -2798,7 +3223,15 @@ Object.assign(window, {
   removeFindingItem,
   addManualFindingItem,
   updateCompiledFindingPreview,
-  confirmAndApplyExtraction
+  confirmAndApplyExtraction,
+  openMedicationModal,
+  closeMedicationModal,
+  saveMedication,
+  deleteMedication,
+  toggleMedicationStatus,
+  toggleMedicationSummaryInclusion,
+  handleMedStatusChange,
+  applyMedPreset
 });
 
 initialize();

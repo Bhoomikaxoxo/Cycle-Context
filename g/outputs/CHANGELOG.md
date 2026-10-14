@@ -1,6 +1,17 @@
 
 # Rules changelog
 
+## 0.5.0
+- Added Medication & Supplement Regimen Tracker.
+  - Client-side, local-first privacy: Regimens stored strictly on-device in browser `localStorage`.
+  - Clinical and nutritional presets: One-click setup for common regimens (Myo-Inositol, Metformin, Combined Oral Contraceptive, Levothyroxine, Spironolactone, Vitamin D3, Micronized Progesterone, Iron / Bisglycinate, Omega-3 Fish Oil).
+  - Regimen tracking: Support for dosage, frequency, start date, optional end date, category (medication, supplement, therapy), status (active, paused, completed), and clinician notes.
+  - Duration calculations: Dynamic human-readable duration displays ("Started today", "X days (~Y wks)", "~Z mos").
+  - Timeline & Change Explorer integration: Option to automatically create a milestone on the user's cycle timeline upon starting a regimen, enabling before-and-after cycle pattern comparison.
+  - Clinician Consultation Brief integration: Includes active and relevant past regimens in appointment summaries with user-controlled checkboxes for print/PDF export and automatic generation of clinician discussion prompts.
+  - Data portability: Fully integrated into private JSON backup export and restoration.
+  - Objective medical tone: Zero cause-and-effect claims or medical recommendations; strictly observational.
+
 ## 0.4.0
 - Added Assisted Medical Report Key-Finding Extraction.
   - Client-side, local-first privacy: 100% on-device parsing of uploaded text/lab reports and pasted notes without sending any private medical records to external cloud servers.
