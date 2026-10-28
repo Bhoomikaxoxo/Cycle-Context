@@ -43,7 +43,6 @@ Cycle-context/
 │   ├── product-brief.md          # Core clinical principles & non-causal UX thesis
 │   └── CHANGELOG.md              # Version history & release notes
 │
-├── g/outputs/                    # Legacy compatibility directory
 ├── package.json                  # Project manifest, dependencies & NPM scripts
 └── README.md                     # Project documentation
 ```
