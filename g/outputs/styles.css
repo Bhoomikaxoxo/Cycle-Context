@@ -3422,6 +3422,244 @@ main {
   background: #b91c1c;
 }
 
+/* Symptom Phase Correlation & Recurrence Styles */
+.symptom-phase-filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 16px;
+  padding: 8px 12px;
+  background: #f7f9f7;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.phase-filter-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--muted);
+}
+.symptom-correlation-summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #fdfbf7;
+  border: 1px solid #e7dfd5;
+  border-radius: 6px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: var(--ink);
+}
+.symptom-correlation-stats {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.symptom-correlation-stat-item strong {
+  color: var(--plum-dark);
+}
+.symptom-recurrence-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  background: #fafaf7;
+  margin-bottom: 12px;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.symptom-recurrence-card:hover {
+  border-color: #bcc6bd;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+.symptom-recurrence-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.symptom-recurrence-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 700 15px var(--sans);
+  color: var(--ink);
+}
+.recurrence-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.recurrence-badge.high {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+.recurrence-badge.moderate {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+.recurrence-badge.low {
+  background: #f3f4f6;
+  color: var(--muted);
+  border: 1px solid #e5e7eb;
+}
+.sample-size-pill {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.symptom-clinical-summary {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  margin: 6px 0 12px;
+}
+.symptom-clinical-summary em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--plum);
+}
+.phase-dist-container {
+  margin: 10px 0;
+}
+.phase-dist-label-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.phase-distribution-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #e9ece6;
+}
+.phase-dist-segment {
+  height: 100%;
+  transition: width .2s ease;
+}
+.phase-dist-segment.pre-menstrual { background: #ef4444; }
+.phase-dist-segment.menstrual { background: var(--plum); }
+.phase-dist-segment.mid-cycle { background: #f59e0b; }
+.phase-dist-segment.follicular { background: #0284c7; }
+.phase-dist-segment.luteal { background: #d97706; }
+.phase-dist-segment.unlinked { background: #9ca3af; }
+
+.phase-legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.phase-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.phase-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.phase-legend-dot.pre-menstrual { background: #ef4444; }
+.phase-legend-dot.menstrual { background: var(--plum); }
+.phase-legend-dot.mid-cycle { background: #f59e0b; }
+.phase-legend-dot.follicular { background: #0284c7; }
+.phase-legend-dot.luteal { background: #d97706; }
+
+.cycle-matrix-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 6px;
+  padding: 8px 10px;
+  background: #f4f6f3;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.cycle-matrix-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-right: 6px;
+  white-space: nowrap;
+}
+.cycle-matrix-chip {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cycle-matrix-chip.active {
+  background: #fdf2f8;
+  border-color: #fbcfe8;
+  color: var(--plum-dark);
+  font-weight: 600;
+}
+.cycle-matrix-chip.active .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--plum);
+  display: inline-block;
+}
+
+/* Clinician brief recurring symptoms table */
+.brief-symptoms-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 8px;
+}
+.brief-symptoms-table th,
+.brief-symptoms-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.brief-symptoms-table th {
+  background: #f4f6f3;
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+@media print {
+  .brief-symptoms-table {
+    font-size: 9.5pt;
+  }
+  .brief-symptoms-table th,
+  .brief-symptoms-table td {
+    padding: 3px 5px;
+    border-color: #ccc;
+  }
+}
+
+
 
 
 

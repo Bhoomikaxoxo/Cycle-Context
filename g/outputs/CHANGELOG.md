@@ -1,6 +1,17 @@
 
 # Rules changelog
 
+## 0.7.0
+- Added Cycle & Symptom Phase Recurrence Correlation.
+  - Objective cycle-level recurrence metrics: Computes true recurrence rates across recorded cycles (e.g. "Observed in 3 of 4 recorded cycles (75% recurrence)") instead of isolated instance counts.
+  - Clinical cycle phase classification: Granular phase mapping for each symptom entry across Menstrual (Days 1–5 or recorded bleeding duration), Follicular (Days 6–11), Mid-cycle / Ovulatory (~cycle midpoint ± 2 days), Luteal, and Pre-menstrual (1–7 days before next period start / late luteal).
+  - Clear sample-size and confidence indicators: Displays transparent denominators and confidence tiers (requires ≥3 cycles to assess recurring pattern; flags consistent vs emerging vs isolated patterns).
+  - Visual stacked phase distribution bars: Multi-color proportion indicators showing exact percentages and counts in each clinical phase.
+  - Cycle-by-cycle recurrence matrix strip: Visual chip matrix rendering recurrence status across each consecutive tracked cycle.
+  - Interactive phase filter chips: One-click filtering by phase (All phases, Pre-menstrual, Menstrual, Mid-cycle, Follicular) in the Patterns view.
+  - Clinician Consultation Brief integration: Upgrades Section 5 ("Reported Symptoms & Phase Recurrence") to a high-density clinical table with cycle recurrence rates, dominant phase tags, and observational summary notes for medical evaluation.
+  - Objective, non-causal medical tone: Explicitly labels recurrence as observational logs without claiming causality or diagnosing catamenial conditions.
+
 ## 0.6.0
 - Added Clinician One-Pager Print & PDF Visual Polish.
   - Executive Clinical Overview card: Synthesizes cycle frequency, regularity spread, bleeding duration, active regimens, and top patient inquiries in a high-density clinical summary box.

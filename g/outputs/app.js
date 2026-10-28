@@ -13,6 +13,12 @@ import {
   buildExecutiveSummaryData,
   formatClinicalDate
 } from './brief-visuals.js';
+import {
+  analyzeSymptomCorrelations,
+  filterCorrelations,
+  buildSymptomCycleMatrix,
+  PHASE_CONFIG
+} from './symptom-correlation.js';
 
 const CURRENT_SCHEMA_VERSION = 1;
 
@@ -53,13 +59,31 @@ let currentExtractionDocId = null;
 let candidateFindings = [];
 
 const SAMPLE_ENTRIES = [
+  // Cycle 4 (Sep 06)
   { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-09-06', type: 'period', title: 'Period started', detail: 'Flow: moderate' },
-  { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-08-26', type: 'symptom', title: 'Lower energy', detail: 'Noticed during the week before bleeding' },
+  { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-09-10', type: 'period', title: 'Period ended', detail: 'Flow: light' },
+  { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-09-07', type: 'symptom', title: 'Pelvic discomfort', detail: 'Day 2 pelvic cramping, managed with heat pack' },
+
+  // Cycle 3 (Jul 24 to Sep 06 - 44 days)
+  { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-08-31', type: 'symptom', title: 'Lower energy', detail: 'Noticed during the week before bleeding (6d before)' },
+  { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-08-26', type: 'symptom', title: 'Sleep changes', detail: 'Restless sleep recorded in evening' },
   { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-07-24', type: 'period', title: 'Period started', detail: 'Flow: light' },
-  { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-07-12', type: 'symptom', title: 'Pelvic discomfort', detail: 'Logged in evening' },
+  { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-07-28', type: 'period', title: 'Period ended', detail: 'Flow: light' },
+  { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-07-25', type: 'symptom', title: 'Pelvic discomfort', detail: 'Day 2 mild aching' },
+
+  // Cycle 2 (Jun 08 to Jul 24 - 46 days)
+  { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-07-20', type: 'symptom', title: 'Lower energy', detail: 'Pre-menstrual fatigue (4d before bleeding)' },
+  { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-06-24', type: 'symptom', title: 'Pelvic discomfort', detail: 'Mid-cycle twinge (~Day 16)' },
   { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-06-08', type: 'period', title: 'Period started', detail: 'Flow: moderate' },
+  { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-06-12', type: 'period', title: 'Period ended', detail: 'Flow: moderate' },
+  { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-06-09', type: 'symptom', title: 'Pelvic discomfort', detail: 'Day 2 cramping' },
+
+  // Cycle 1 (May 03 to Jun 08 - 36 days)
+  { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-06-03', type: 'symptom', title: 'Lower energy', detail: 'Sluggish feeling 5 days before period' },
   { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-05-14', type: 'context', title: 'Routine change', detail: 'Marked by you' },
   { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-05-03', type: 'period', title: 'Period started', detail: 'Flow: moderate' },
+  { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-05-07', type: 'period', title: 'Period ended', detail: 'Flow: light' },
+  { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-05-04', type: 'symptom', title: 'Pelvic discomfort', detail: 'Day 2 pelvic aching' },
   { schemaVersion: CURRENT_SCHEMA_VERSION, date: '2026-04-12', type: 'record', title: 'Clinician note', detail: 'Follow-up planned in three months' }
 ];
 
@@ -1132,16 +1156,28 @@ function renderPopulationComparison() {
   `;
 }
 
-let currentSymptomView = 'timing';
+let currentSymptomView = 'recurrence';
+let currentSymptomPhaseFilter = 'all';
+
+function setSymptomPhaseFilter(phase) {
+  currentSymptomPhaseFilter = phase;
+  const buttons = document.querySelectorAll('#symptomPhaseFilterBar .filter-chip');
+  buttons.forEach(btn => btn.classList.toggle('active', btn.dataset.phase === phase));
+  renderSymptomPatterns();
+}
 
 function switchSymptomView(mode) {
   currentSymptomView = mode;
+  const tabRecurrence = document.getElementById('symTabRecurrence');
   const tabTiming = document.getElementById('symTabTiming');
   const tabCounts = document.getElementById('symTabCounts');
-  if (tabTiming && tabCounts) {
-    tabTiming.classList.toggle('active', mode === 'timing');
-    tabCounts.classList.toggle('active', mode === 'counts');
-  }
+  const filterBar = document.getElementById('symptomPhaseFilterBar');
+
+  if (tabRecurrence) tabRecurrence.classList.toggle('active', mode === 'recurrence');
+  if (tabTiming) tabTiming.classList.toggle('active', mode === 'timing');
+  if (tabCounts) tabCounts.classList.toggle('active', mode === 'counts');
+  if (filterBar) filterBar.style.display = mode === 'recurrence' ? 'flex' : 'none';
+
   renderSymptomPatterns();
 }
 
@@ -1199,11 +1235,145 @@ function renderSymptomPatterns() {
   }
 
   const starts = periodStarts();
+  const startsDates = starts.map(s => s.date);
   const intervals = cycleIntervals();
   const averageCycle = intervals.length
     ? Math.round(intervals.reduce((a, b) => a + b.days, 0) / intervals.length)
     : 30;
 
+  if (currentSymptomView === 'recurrence') {
+    const correlationData = analyzeSymptomCorrelations(entries);
+    const filteredCorrelations = filterCorrelations(correlationData.correlations, currentSymptomPhaseFilter);
+
+    if (!filteredCorrelations.length) {
+      target.innerHTML = '<p class="empty-state">No recorded symptoms match this phase filter.</p>';
+      return;
+    }
+
+    const summaryBarHTML = `
+      <div class="symptom-correlation-summary-bar">
+        <div class="symptom-correlation-stats">
+          <span class="symptom-correlation-stat-item"><strong>${correlationData.totalCyclesObserved}</strong> cycle${correlationData.totalCyclesObserved === 1 ? '' : 's'} tracked</span>
+          <span class="symptom-correlation-stat-item"><strong>${correlationData.correlations.length}</strong> unique symptom${correlationData.correlations.length === 1 ? '' : 's'}</span>
+          <span class="symptom-correlation-stat-item"><strong>${correlationData.correlations.filter(c => c.isConsistentRecurrence).length}</strong> consistent phase pattern${correlationData.correlations.filter(c => c.isConsistentRecurrence).length === 1 ? '' : 's'}</span>
+        </div>
+        <span class="sample-size-pill">≥3 cycles for high confidence</span>
+      </div>
+    `;
+
+    const cardsHTML = filteredCorrelations.map(item => {
+      const recBadgeClass = item.cycleRecurrenceRate >= 60 ? 'high' : (item.cycleRecurrenceRate >= 40 ? 'moderate' : 'low');
+      const dominantSlug = item.dominantPhase?.slug || 'unlinked';
+      const dominantShort = item.dominantPhase?.shortName || 'Unlinked';
+
+      const totalOccurrences = item.totalOccurrences || 1;
+      const distSegmentsHTML = item.phaseBreakdown.map(p => {
+        const pct = Math.max(5, Math.round((p.occurrences / totalOccurrences) * 100));
+        return `<div class="phase-dist-segment ${p.slug}" style="width:${pct}%" title="${escapeHTML(p.name)}: ${p.occurrences}x (${pct}%)"></div>`;
+      }).join('');
+
+      const matrixCellsHTML = startsDates.map((dateStr, idx) => {
+        const infos = item.phaseInfos.filter(p => p.cycleIndex === idx);
+        const isPresent = infos.length > 0;
+        const phaseNames = [...new Set(infos.map(p => p.phaseSlug))].join(', ');
+        return `
+          <div class="cycle-matrix-chip ${isPresent ? 'active' : ''}" title="Cycle ${idx + 1} (${formatDate(dateStr)}): ${isPresent ? phaseNames : 'Not logged'}">
+            ${isPresent ? '<span class="dot"></span>' : ''} Cycle ${idx + 1}
+          </div>
+        `;
+      }).join('');
+
+      const entriesBullets = item.entries.map((e, idx) => {
+        const p = item.phaseInfos[idx];
+        const cycleLabel = p.cycleDay ? `Cycle Day ${p.cycleDay}` : 'Unlinked';
+        const preLabel = p.daysBeforeNext !== null ? `(${p.daysBeforeNext}d before next period)` : '';
+        return `<div class="symptom-entry-bullet">
+          <span><strong>${formatDate(e.date)}</strong>: ${cycleLabel} ${preLabel} <span class="phase-pill ${p.phaseSlug}" style="font-size:9px;padding:1px 5px;margin-left:4px">${p.phaseSlug}</span></span>
+          <span style="font-style:italic">${escapeHTML(e.detail && e.detail !== 'Added by you' ? e.detail : '')}</span>
+        </div>`;
+      }).join('');
+
+      return `
+        <div class="symptom-recurrence-card">
+          <div class="symptom-recurrence-top">
+            <div class="symptom-recurrence-title">
+              <span>${escapeHTML(item.name)}</span>
+              <span class="tag plum" style="font-size:11px">${item.totalOccurrences}×</span>
+              <span class="recurrence-badge ${recBadgeClass}">${item.cycleRecurrenceRate}% recurrence</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span class="sample-size-pill">${item.cyclesWithSymptom} of ${item.totalCyclesObserved} cycles</span>
+              <span class="phase-pill ${dominantSlug}">${escapeHTML(dominantShort)}</span>
+            </div>
+          </div>
+
+          <div class="symptom-clinical-summary">
+            ${escapeHTML(item.clinicalSummary)}
+          </div>
+
+          <div class="phase-dist-container">
+            <div class="phase-dist-label-row">
+              <span>Cycle phase distribution</span>
+              <span>${item.totalOccurrences} total entries</span>
+            </div>
+            <div class="phase-distribution-bar">
+              ${distSegmentsHTML}
+            </div>
+            <div class="phase-legend-row">
+              ${item.phaseBreakdown.map(p => `
+                <span class="phase-legend-item">
+                  <span class="phase-legend-dot ${p.slug}"></span>
+                  <span>${escapeHTML(p.shortName)}: <strong>${p.occurrences}×</strong> (${p.cyclesInPhase} cycle${p.cyclesInPhase === 1 ? '' : 's'})</span>
+                </span>
+              `).join('')}
+            </div>
+          </div>
+
+          <div class="cycle-matrix-strip">
+            <span class="cycle-matrix-label">Cycles observed:</span>
+            ${matrixCellsHTML}
+          </div>
+
+          <div class="symptom-entries-dropdown">
+            ${entriesBullets}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    target.innerHTML = `
+      <div class="symptom-recurrence-list">
+        ${summaryBarHTML}
+        ${cardsHTML}
+      </div>
+    `;
+    return;
+  }
+
+  if (currentSymptomView === 'counts') {
+    const grouped = new Map();
+    symptomEntries.forEach(entry => {
+      const name = entry.title.trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      const curr = grouped.get(key) || { name, count: 0 };
+      curr.count += 1;
+      grouped.set(key, curr);
+    });
+    const items = [...grouped.values()].sort((a, b) => b.count - a.count);
+    target.innerHTML = items.map(({ name, count }) => `
+      <div class="report-row">
+        <div>
+          <strong>${escapeHTML(name)}</strong>
+          <small>Logged ${count} time${count === 1 ? '' : 's'}</small>
+        </div>
+        <span class="tag plum">${count}</span>
+      </div>
+    `).join('');
+    return;
+  }
+
+  // Linear cycle track view ('timing')
   const grouped = new Map();
   symptomEntries.forEach(entry => {
     const name = entry.title.trim();
@@ -1218,19 +1388,6 @@ function renderSymptomPatterns() {
   });
 
   const items = [...grouped.values()].sort((a, b) => b.count - a.count);
-
-  if (currentSymptomView === 'counts') {
-    target.innerHTML = items.map(({ name, count }) => `
-      <div class="report-row">
-        <div>
-          <strong>${escapeHTML(name)}</strong>
-          <small>Logged ${count} time${count === 1 ? '' : 's'}</small>
-        </div>
-        <span class="tag plum">${count}</span>
-      </div>
-    `).join('');
-    return;
-  }
 
   target.innerHTML = `
     <div class="symptom-timing-list">
@@ -2317,9 +2474,52 @@ function renderClinicianBrief() {
     groupedSymptoms.set(key, { name: curr?.name || name, count: (curr?.count || 0) + 1 });
   });
   const topSymptoms = [...groupedSymptoms.values()].sort((a, b) => b.count - a.count);
-  const symptomsHTML = topSymptoms.length
-    ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${topSymptoms.map(s => `<span class="tag plum" style="font-size:12px;padding:4px 10px">${escapeHTML(s.name)} <strong>(${s.count}×)</strong></span>`).join('')}</div>`
-    : '<p class="empty-state">No symptoms recorded in this timeframe.</p>';
+
+  const symptomCorrelations = analyzeSymptomCorrelations(summaryEntries);
+  let symptomsHTML = '<p class="empty-state">No symptoms recorded in this timeframe.</p>';
+
+  if (symptomCorrelations.correlations.length) {
+    const tableRows = symptomCorrelations.correlations.map(c => {
+      const recBadgeClass = c.cycleRecurrenceRate >= 60 ? 'high' : (c.cycleRecurrenceRate >= 40 ? 'moderate' : 'low');
+      const dominantSlug = c.dominantPhase?.slug || 'unlinked';
+      const dominantShort = c.dominantPhase?.shortName || 'Unlinked';
+      return `
+        <tr>
+          <td><strong>${escapeHTML(c.name)}</strong><br><small style="color:var(--muted)">${c.totalOccurrences} total log${c.totalOccurrences === 1 ? '' : 's'}</small></td>
+          <td>
+            <span class="recurrence-badge ${recBadgeClass}">${c.cycleRecurrenceRate}%</span>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${c.cyclesWithSymptom} of ${c.totalCyclesObserved} cycle${c.totalCyclesObserved === 1 ? '' : 's'}</div>
+          </td>
+          <td>
+            <span class="phase-pill ${dominantSlug}">${escapeHTML(dominantShort)}</span>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${c.dominantPhase ? `${c.dominantPhase.cyclesInPhase} cycle${c.dominantPhase.cyclesInPhase === 1 ? '' : 's'}` : '—'}</div>
+          </td>
+          <td style="font-size:11px;line-height:1.4">
+            ${escapeHTML(c.clinicalSummary)}
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    symptomsHTML = `
+      <table class="brief-symptoms-table">
+        <thead>
+          <tr>
+            <th>Symptom</th>
+            <th>Cycle Recurrence</th>
+            <th>Dominant Phase</th>
+            <th>Observational Summary</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tableRows}
+        </tbody>
+      </table>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+        ${topSymptoms.map(s => `<span class="tag plum" style="font-size:11px;padding:3px 8px">${escapeHTML(s.name)} <strong>(${s.count}×)</strong></span>`).join('')}
+      </div>
+    `;
+  }
 
   const selectedDocs = summaryDocs.filter(d => d.includeInSummary && ((d.notes && d.notes.trim()) || (d.keyFinding && d.keyFinding.trim())));
   const docsHTML = selectedDocs.length
@@ -2594,7 +2794,7 @@ function renderClinicianBrief() {
 
     <!-- Symptoms Profile -->
     <div class="brief-section ${printPrefs.sections.symptoms ? '' : 'is-hidden'}" id="briefSec_symptoms">
-      <div class="brief-section-title">5. Reported Symptoms Profile</div>
+      <div class="brief-section-title">5. Reported Symptoms &amp; Phase Recurrence (${topSymptoms.length} recorded)</div>
       ${symptomsHTML}
     </div>
 
@@ -3400,7 +3600,8 @@ Object.assign(window, {
   applyMedPreset,
   togglePrintSection,
   toggleCompactPrint,
-  updatePrintMeta
+  updatePrintMeta,
+  setSymptomPhaseFilter
 });
 
 initialize();
