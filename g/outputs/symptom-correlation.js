@@ -2,13 +2,8 @@
 // Client-side, non-causal cycle phase correlation and recurrence analyzer for symptoms.
 // Calculates objective cycle-level recurrence rates and phase distributions with clear sample-size indicators.
 
-const DAY = 86400000;
-
-export const parseDay = (s) =>
-  Date.UTC(Number(s.slice(0, 4)), Number(s.slice(5, 7)) - 1, Number(s.slice(8, 10)));
-
-export const daysBetween = (a, b) =>
-  Math.round((parseDay(b) - parseDay(a)) / DAY);
+import { parseDay, daysBetween } from './analysis.js';
+export { parseDay, daysBetween };
 
 export const PHASE_CONFIG = {
   menstrual: {

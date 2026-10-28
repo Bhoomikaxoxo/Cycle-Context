@@ -17,6 +17,7 @@ import {
   analyzeSymptomCorrelations,
   filterCorrelations,
   buildSymptomCycleMatrix,
+  determineEntryPhase,
   PHASE_CONFIG
 } from './symptom-correlation.js';
 
@@ -220,32 +221,6 @@ function updateBriefOptionsUI() {
   }
 }
 
-const symptomTerms = [
-  ['Cramps', ['cramps', 'cramp', 'crampy']],
-  ['Pelvic discomfort', ['pelvic discomfort', 'pelvic pain']],
-  ['Pain', ['pain', 'aching', 'ache', 'sore']],
-  ['Headache', ['headache', 'migraine']],
-  ['Lower energy', ['low energy', 'tired', 'fatigue', 'exhausted']],
-  ['Mood changes', ['mood swings', 'mood change', 'irritable', 'anxious', 'sad']],
-  ['Sleep changes', ['sleep changes', 'insomnia', 'poor sleep', 'slept']],
-  ['Bloating', ['bloating', 'bloated', 'bloat']],
-  ['Nausea', ['nausea', 'nauseous']],
-  ['Spotting', ['spotting']],
-  ['Heavy bleeding', ['heavy bleeding', 'heavy flow']],
-  ['Back pain', ['backache', 'back pain']],
-  ['Breast tenderness', ['breast tenderness', 'tender breasts']],
-  ['Dizziness', ['dizzy', 'dizziness']],
-  ['Acne', ['acne', 'breakout']]
-];
-
-const eventKinds = [
-  ['period-start', 'Period started'],
-  ['period-end', 'Period ended'],
-  ['symptom', 'Symptom'],
-  ['context', 'Life or treatment context'],
-  ['note', 'General note']
-];
-
 const SYMPTOM_CHIPS = ['Lower energy', 'Pelvic discomfort', 'Cramps', 'Sleep changes', 'Mood changes', 'Headache'];
 const selectedChips = new Set();
 
@@ -320,12 +295,6 @@ function dayNumber(isoDate) {
     Number(isoDate.slice(5, 7)) - 1,
     Number(isoDate.slice(8, 10))
   ) / 86_400_000;
-}
-
-function dateFromDayOffset(days) {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  return localISODate(date);
 }
 
 const DATE_FORMAT_CACHE = new Map();
@@ -417,7 +386,6 @@ function timelineMarkup(list) {
 
   return Array.from(byDate.entries()).map(([dateStr, items]) => {
     const hasMarker = items.some(e => e.type === 'context');
-    const hasPeriod = items.some(e => e.type === 'period');
     const hasDoc = items.some(e => e.type === 'document');
     const hasMed = items.some(e => e.type === 'medication');
 
@@ -806,12 +774,6 @@ function renderCycleChart() {
   axis.innerHTML = intervals.map(item => `<span>${formatDate(item.end.date, { month: 'short' })}</span>`).join('');
 }
 
-function rangeText(intervals) {
-  if (!intervals.length) return 'Not enough recorded cycle intervals yet.';
-  const lengths = intervals.map(item => item.days);
-  return `${Math.min(...lengths)}–${Math.max(...lengths)} days across ${lengths.length} recorded interval${lengths.length === 1 ? '' : 's'}`;
-}
-
 let selectedMarkerId = null;
 
 function selectChangeMarker(id) {
@@ -1181,49 +1143,6 @@ function switchSymptomView(mode) {
   renderSymptomPatterns();
 }
 
-function getSymptomTiming(entry, starts, averageCycleLength = 30) {
-  const eDay = dayNumber(entry.date);
-  const prevStart = [...starts].reverse().find(s => dayNumber(s.date) <= eDay);
-  const nextStart = starts.find(s => dayNumber(s.date) > eDay);
-
-  let cycleDay = null;
-  let daysBeforeNext = null;
-  let phaseName = 'Unlinked (no cycle starts)';
-  let phaseSlug = 'unlinked';
-  let percentage = 50;
-
-  if (prevStart) {
-    cycleDay = eDay - dayNumber(prevStart.date) + 1;
-    const estimatedLen = nextStart ? (dayNumber(nextStart.date) - dayNumber(prevStart.date)) : averageCycleLength;
-    percentage = Math.min(100, Math.max(0, Math.round((cycleDay / Math.max(1, estimatedLen)) * 100)));
-  }
-
-  if (nextStart) {
-    daysBeforeNext = dayNumber(nextStart.date) - eDay;
-  }
-
-  if (daysBeforeNext !== null && daysBeforeNext <= 7 && daysBeforeNext >= 1) {
-    phaseName = daysBeforeNext <= 3 ? 'Pre-menstrual (1–3d before)' : 'Late luteal (4–7d before)';
-    phaseSlug = 'pre-menstrual';
-  } else if (cycleDay !== null) {
-    if (cycleDay <= 5) {
-      phaseName = 'Menstrual phase (Days 1–5)';
-      phaseSlug = 'menstrual';
-    } else if (cycleDay >= 12 && cycleDay <= 17) {
-      phaseName = 'Mid-cycle / Ovulatory (Days 12–17)';
-      phaseSlug = 'mid-cycle';
-    } else if (cycleDay < 12) {
-      phaseName = 'Follicular phase (Days 6–11)';
-      phaseSlug = 'follicular';
-    } else {
-      phaseName = `Luteal phase (Cycle Day ${cycleDay})`;
-      phaseSlug = 'luteal';
-    }
-  }
-
-  return { cycleDay, daysBeforeNext, phaseName, phaseSlug, percentage, prevStart, nextStart };
-}
-
 function renderSymptomPatterns() {
   const target = document.getElementById('symptomPatterns');
   if (!target) return;
@@ -1374,12 +1293,13 @@ function renderSymptomPatterns() {
   }
 
   // Linear cycle track view ('timing')
+  const bleeds = bleedingDurations();
   const grouped = new Map();
   symptomEntries.forEach(entry => {
     const name = entry.title.trim();
     if (!name) return;
     const key = name.toLowerCase();
-    const timing = getSymptomTiming(entry, starts, averageCycle);
+    const timing = determineEntryPhase(entry.date, startsDates, bleeds, averageCycle);
     const item = grouped.get(key) || { name, count: 0, timings: [], entries: [] };
     item.count += 1;
     item.timings.push(timing);

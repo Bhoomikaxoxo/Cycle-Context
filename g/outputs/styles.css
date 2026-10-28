@@ -1728,15 +1728,22 @@ main {
 .brief-table th {
   text-align: left;
   padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
   background: #f1f4ee;
-  color: var(--ink);
-  font-weight: 600;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 2px solid var(--line);
 }
 .brief-table td {
-  padding: 10px;
-  border-bottom: 1px solid var(--line);
+  padding: 8px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid #edf1ed;
   vertical-align: top;
+}
+.brief-table tr:hover td {
+  background: #fbfcfb;
 }
 
 .question-list {
@@ -3146,27 +3153,6 @@ main {
   border: 1px solid #a7f3d0;
 }
 
-/* Brief table styles for medications */
-.brief-table th {
-  text-align: left;
-  padding: 8px 10px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: var(--muted);
-  border-bottom: 2px solid var(--line);
-}
-.brief-table td {
-  padding: 8px 10px;
-  font-size: 12px;
-  border-bottom: 1px solid #edf1ed;
-  vertical-align: top;
-}
-.brief-table tr:hover td {
-  background: #fbfcfb;
-}
-
 /* Phase 6: Clinician One-Pager Print & PDF Visual Polish */
 .is-hidden {
   display: none !important;
@@ -3658,12 +3644,4 @@ main {
     border-color: #ccc;
   }
 }
-
-
-
-
-
-
-
-
 

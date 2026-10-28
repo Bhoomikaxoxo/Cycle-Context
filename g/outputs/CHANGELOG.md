@@ -11,6 +11,11 @@
   - Interactive phase filter chips: One-click filtering by phase (All phases, Pre-menstrual, Menstrual, Mid-cycle, Follicular) in the Patterns view.
   - Clinician Consultation Brief integration: Upgrades Section 5 ("Reported Symptoms & Phase Recurrence") to a high-density clinical table with cycle recurrence rates, dominant phase tags, and observational summary notes for medical evaluation.
   - Objective, non-causal medical tone: Explicitly labels recurrence as observational logs without claiming causality or diagnosing catamenial conditions.
+  - Code optimization & dead-code elimination:
+    - Reused `determineEntryPhase` directly in cycle track view, eliminating duplicate `getSymptomTiming` implementation.
+    - Removed unused arrays `symptomTerms` and `eventKinds`, dead function `dateFromDayOffset`, dead function `rangeText`, and unneeded `hasPeriod` variable calculation.
+    - Reused `parseDay` and `daysBetween` directly from `analysis.js` in `symptom-correlation.js`.
+    - Consolidated `.brief-table` stylesheet declarations and removed duplicate rules and trailing empty lines in `styles.css`.
 
 ## 0.6.0
 - Added Clinician One-Pager Print & PDF Visual Polish.
