@@ -1,0 +1,21 @@
+{
+  "name": "cycle-context",
+  "version": "0.7.0",
+  "description": "Local-first cycle tracking with contextual timeline, clinical brief, and non-causal pattern analysis",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "test:legacy": "node --test g/outputs/*.test.js",
+    "bench": "node benchmarks/evaluate-extraction.js",
+    "start": "python3 -m http.server 8089 --directory src"
+  },
+  "keywords": [
+    "cycle-tracking",
+    "clinical-brief",
+    "local-first",
+    "figo",
+    "privacy-first"
+  ],
+  "author": "",
+  "license": "ISC"
+}
