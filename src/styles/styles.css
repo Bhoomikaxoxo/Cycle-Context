@@ -4219,3 +4219,285 @@ main {
 .pop-drawer-content {
   padding: 14px;
 }
+
+/* ============================================================
+   Clinical Lab Work Timing Planner & Myth Buster
+   ============================================================ */
+.lab-planner-card {
+  margin-top: var(--space-4);
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 22px;
+  box-shadow: inset 0 1px #ffffff, 0 3px 0 #d5deda, 0 12px 24px rgba(7, 95, 89, 0.05);
+}
+.lab-planner-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.lab-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--plum);
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.lab-planner-subhead {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0;
+  max-width: 680px;
+}
+.lab-planner-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lab-planner-controls {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 14px 16px;
+  background: #f7faf8;
+  border-radius: 8px;
+  border: 1px solid #e7efe9;
+  margin-bottom: 18px;
+}
+.lab-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lab-input-group label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.lab-input-group input[type="date"],
+.lab-input-group input[type="number"] {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12.5px;
+  background: #fff;
+  color: var(--ink);
+}
+.lab-number-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lab-number-stepper input[type="number"] {
+  width: 70px;
+}
+.lab-input-hint {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.lab-phases-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+@media (max-width: 900px) {
+  .lab-phases-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lab-phase-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #e2ede6;
+  background: #fafcfb;
+  position: relative;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.lab-phase-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--plum);
+}
+.lab-phase-card.progesterone-card {
+  border-color: #d1e5db;
+  background: #f4faf6;
+}
+.lab-phase-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.lab-phase-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #173734;
+  margin: 0;
+}
+.lab-phase-days-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #e4eee8;
+  color: #075f59;
+  white-space: nowrap;
+}
+.lab-phase-dates {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--plum);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.lab-phase-tests {
+  font-size: 11.5px;
+  color: #2b3e37;
+  line-height: 1.4;
+  margin-bottom: 10px;
+}
+.lab-phase-tests strong {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.lab-phase-purpose {
+  font-size: 11px;
+  color: #556c64;
+  line-height: 1.4;
+  padding-top: 8px;
+  border-top: 1px dashed #dbe6df;
+}
+
+.lab-myth-box {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #fff8eb;
+  border: 1px solid #fde3b3;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #78350f;
+}
+.lab-myth-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #b45309;
+  margin-bottom: 3px;
+}
+
+/* ============================================================
+   Historical Cycle Importer (Apple Health, Clue, Flo, CSV)
+   ============================================================ */
+.import-modal {
+  max-width: 580px;
+  width: 90%;
+}
+.import-intro {
+  font-size: 12.5px;
+  color: #3b4e47;
+  line-height: 1.5;
+  margin: 0 0 16px;
+}
+.import-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+@media (max-width: 600px) {
+  .import-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+.import-stat-box {
+  padding: 12px 10px;
+  background: #f7faf8;
+  border: 1px solid #e7efe9;
+  border-radius: 6px;
+  text-align: center;
+}
+.import-stat-num {
+  display: block;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--plum);
+  font-family: var(--display);
+}
+.import-stat-label {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+.import-date-span-banner {
+  padding: 8px 12px;
+  background: #edf4f0;
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: #173734;
+  margin-bottom: 16px;
+}
+
+.import-strategy-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+.import-strategy-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+  background: #fff;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.import-strategy-label:hover {
+  background: #f7faf8;
+  border-color: var(--plum);
+}
+.import-strategy-label input {
+  margin-top: 3px;
+}
+.import-strategy-label strong {
+  display: block;
+  font-size: 12px;
+  color: var(--ink);
+}
+.import-strategy-label small {
+  display: block;
+  font-size: 10.5px;
+  color: var(--muted);
+  line-height: 1.35;
+  margin-top: 2px;
+}

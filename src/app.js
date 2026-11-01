@@ -23,6 +23,15 @@ import {
   determineEntryPhase,
   PHASE_CONFIG,
 } from "./modules/symptom-correlation.js";
+import {
+  importHistoricalData,
+  mergeImportedEntries,
+} from "./modules/importers.js";
+import {
+  calculateLabSchedule,
+  generateLabICS,
+  formatClinicalDateString,
+} from "./modules/lab-planner.js";
 
 const CURRENT_SCHEMA_VERSION = 1;
 
@@ -2124,6 +2133,267 @@ function toggleMedicationSummaryInclusion(id) {
   generateSummary();
 }
 
+function renderLabPlanner() {
+  const container = document.getElementById("labPhasesGrid");
+  const startInput = document.getElementById("labPeriodStart");
+  const lenInput = document.getElementById("labCycleLength");
+  const badgeEl = document.getElementById("labPlannerCycleBadge");
+  const hintEl = document.getElementById("labCycleLengthHint");
+  if (!container || !startInput || !lenInput) return;
+
+  const starts = entries
+    .filter(
+      (e) =>
+        e.type === "period" &&
+        (e.periodRole === "start" || e.title === "Period started"),
+    )
+    .map((e) => e.date)
+    .sort();
+
+  const latestStart = starts.length ? starts[starts.length - 1] : localISODate();
+  const analysisData = analyze(entries);
+  const userMedian = analysisData?.summary?.median || 28;
+
+  if (!startInput.value) {
+    startInput.value = latestStart;
+  }
+  if (!lenInput.value) {
+    lenInput.value = userMedian;
+  }
+
+  const selectedStart = startInput.value || latestStart;
+  const selectedLen = parseInt(lenInput.value, 10) || userMedian;
+
+  if (hintEl) {
+    hintEl.textContent = `Your median: ${userMedian} days`;
+  }
+  if (badgeEl) {
+    badgeEl.textContent = `${selectedLen}-day cycle schedule`;
+  }
+
+  const schedule = calculateLabSchedule(selectedStart, selectedLen);
+  if (!schedule) {
+    container.innerHTML = `<p class="empty-state">Select a period start date to calculate your clinical lab schedule.</p>`;
+    return;
+  }
+
+  const { basal, ultrasound, progesterone } = schedule.phases;
+
+  container.innerHTML = `
+    <!-- Phase 1: Basal Hormone Panel -->
+    <div class="lab-phase-card">
+      <div>
+        <div class="lab-phase-header">
+          <h4 class="lab-phase-name">${escapeHTML(basal.name)}</h4>
+          <span class="lab-phase-days-pill">${escapeHTML(basal.cycleDays)}</span>
+        </div>
+        <div class="lab-phase-dates">
+          📅 ${formatClinicalDateString(basal.startDate)} – ${formatClinicalDateString(basal.endDate)}
+        </div>
+        <div class="lab-phase-tests">
+          <strong>Recommended Tests</strong>
+          ${basal.tests.map((t) => `<div>• ${escapeHTML(t)}</div>`).join("")}
+        </div>
+      </div>
+      <div class="lab-phase-purpose">${escapeHTML(basal.purpose)}</div>
+    </div>
+
+    <!-- Phase 2: Pelvic Ultrasound -->
+    <div class="lab-phase-card">
+      <div>
+        <div class="lab-phase-header">
+          <h4 class="lab-phase-name">${escapeHTML(ultrasound.name)}</h4>
+          <span class="lab-phase-days-pill">${escapeHTML(ultrasound.cycleDays)}</span>
+        </div>
+        <div class="lab-phase-dates">
+          📅 ${formatClinicalDateString(ultrasound.startDate)} – ${formatClinicalDateString(ultrasound.endDate)}
+        </div>
+        <div class="lab-phase-tests">
+          <strong>Recommended Scans</strong>
+          ${ultrasound.tests.map((t) => `<div>• ${escapeHTML(t)}</div>`).join("")}
+        </div>
+      </div>
+      <div class="lab-phase-purpose">${escapeHTML(ultrasound.purpose)}</div>
+    </div>
+
+    <!-- Phase 3: True Mid-Luteal Progesterone -->
+    <div class="lab-phase-card progesterone-card">
+      <div>
+        <div class="lab-phase-header">
+          <h4 class="lab-phase-name">${escapeHTML(progesterone.name)}</h4>
+          <span class="lab-phase-days-pill" style="background:#d1fae5;color:#065f46">
+            ${escapeHTML(progesterone.cycleDays)}
+          </span>
+        </div>
+        <div class="lab-phase-dates">
+          🎯 ${formatClinicalDateString(progesterone.exactTargetDate)}
+        </div>
+        <div class="lab-phase-tests">
+          <strong>Recommended Test</strong>
+          <div>• Serum Progesterone (P4)</div>
+          <small style="color:var(--muted);display:block;margin-top:2px">Optimal window: ${formatClinicalDateString(progesterone.startDate)} – ${formatClinicalDateString(progesterone.endDate)}</small>
+        </div>
+      </div>
+      <div>
+        <div class="lab-myth-box">
+          <div class="lab-myth-badge">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            Clinical Myth Buster
+          </div>
+          ${escapeHTML(progesterone.mythBuster.explanation)}
+        </div>
+        <div class="lab-phase-purpose" style="margin-top:10px">${escapeHTML(progesterone.purpose)}</div>
+      </div>
+    </div>
+  `;
+}
+
+function downloadLabICSFile() {
+  const startInput = document.getElementById("labPeriodStart");
+  const lenInput = document.getElementById("labCycleLength");
+  if (!startInput || !lenInput) return;
+  const start = startInput.value;
+  const len = parseInt(lenInput.value, 10) || 28;
+  const schedule = calculateLabSchedule(start, len);
+  if (!schedule) return;
+
+  const icsContent = generateLabICS(schedule);
+  const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `cycle-context-lab-schedule-${start}.ics`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast("Lab schedule calendar file (.ics) downloaded");
+}
+
+function copyLabSchedule() {
+  const startInput = document.getElementById("labPeriodStart");
+  const lenInput = document.getElementById("labCycleLength");
+  if (!startInput || !lenInput) return;
+  const start = startInput.value;
+  const len = parseInt(lenInput.value, 10) || 28;
+  const schedule = calculateLabSchedule(start, len);
+  if (!schedule) return;
+
+  const text = `CLINICAL LAB WORK TIMING SCHEDULE (Cycle Length: ${len} days)
+Cycle Day 1 (Period Start): ${formatClinicalDateString(start)}
+
+1. BASAL HORMONE PANEL (${schedule.phases.basal.cycleDays})
+   Dates: ${formatClinicalDateString(schedule.phases.basal.startDate)} to ${formatClinicalDateString(schedule.phases.basal.endDate)}
+   Tests: ${schedule.phases.basal.tests.join(", ")}
+   Purpose: ${schedule.phases.basal.purpose}
+
+2. BASELINE PELVIC ULTRASOUND (${schedule.phases.ultrasound.cycleDays})
+   Dates: ${formatClinicalDateString(schedule.phases.ultrasound.startDate)} to ${formatClinicalDateString(schedule.phases.ultrasound.endDate)}
+   Scans: ${schedule.phases.ultrasound.tests.join(", ")}
+   Purpose: ${schedule.phases.ultrasound.purpose}
+
+3. MID-LUTEAL PROGESTERONE (${schedule.phases.progesterone.cycleDays})
+   Target Date: ${formatClinicalDateString(schedule.phases.progesterone.exactTargetDate)} (Window: ${formatClinicalDateString(schedule.phases.progesterone.startDate)} to ${formatClinicalDateString(schedule.phases.progesterone.endDate)})
+   Test: Serum Progesterone (P4)
+   Note: ${schedule.phases.progesterone.mythBuster.explanation}
+
+Generated privately by Cycle Context (Local-First ACOG Guidelines)`;
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard
+      .writeText(text)
+      .then(() => toast("Lab schedule copied to clipboard"))
+      .catch(() => alert(text));
+  } else {
+    alert(text);
+  }
+}
+
+let pendingHistoricalImport = null;
+
+async function handleHistoricalImport(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const result = importHistoricalData(text, file.name);
+
+    if (!result || !result.entries || !result.entries.length) {
+      alert("No valid cycle or symptom records could be found in this file.");
+      return;
+    }
+
+    pendingHistoricalImport = result;
+
+    document.getElementById("importModalSourceTag").textContent = result.source;
+    document.getElementById("importStatStarts").textContent =
+      result.stats.periodStarts;
+    document.getElementById("importStatEnds").textContent =
+      result.stats.periodEnds;
+    document.getElementById("importStatSymptoms").textContent =
+      result.stats.symptoms;
+    document.getElementById("importStatBleedDays").textContent =
+      result.stats.totalBleedingDays;
+
+    const sortedDates = result.entries.map((e) => e.date).sort();
+    const earliest = sortedDates[0];
+    const latest = sortedDates[sortedDates.length - 1];
+    document.getElementById("importDateSpanBanner").innerHTML = `
+      Recorded span: <strong>${formatDate(earliest)}</strong> to <strong>${formatDate(latest)}</strong> (${result.entries.length} total entries)
+    `;
+
+    document
+      .getElementById("historicalImportModalBackdrop")
+      .classList.add("show");
+  } catch (err) {
+    console.error("Import error:", err);
+    alert("Failed to parse import file: " + err.message);
+  } finally {
+    input.value = "";
+  }
+}
+
+function closeHistoricalImportModal() {
+  document
+    .getElementById("historicalImportModalBackdrop")
+    .classList.remove("show");
+  pendingHistoricalImport = null;
+}
+
+function confirmHistoricalImport() {
+  if (!pendingHistoricalImport) return;
+
+  const strategy =
+    document.querySelector('input[name="importStrategy"]:checked')?.value ||
+    "merge";
+
+  if (strategy === "replace") {
+    if (
+      !confirm(
+        "Are you sure you want to replace your existing records with this imported file?",
+      )
+    ) {
+      return;
+    }
+    entries = pendingHistoricalImport.entries;
+  } else {
+    const { merged } = mergeImportedEntries(
+      entries,
+      pendingHistoricalImport.entries,
+    );
+    entries = merged;
+  }
+
+  persistEntries();
+  render();
+  generateSummary();
+  closeHistoricalImportModal();
+  toast(
+    `Successfully imported ${pendingHistoricalImport.entries.length} records from ${pendingHistoricalImport.source}`,
+  );
+}
+
 function render() {
   const allItems = getAllTimelineItems();
   document.getElementById("recentTimeline").innerHTML = timelineMarkup(
@@ -2139,6 +2409,7 @@ function render() {
   renderInsight();
   renderRecordNotes();
   renderMedications();
+  renderLabPlanner();
   renderClinicianBrief();
   const activeMedsCount = medications.filter(
     (m) => (m.status || "active") === "active",
@@ -4346,6 +4617,12 @@ Object.assign(window, {
   toggleCompactPrint,
   updatePrintMeta,
   setSymptomPhaseFilter,
+  renderLabPlanner,
+  downloadLabICSFile,
+  copyLabSchedule,
+  handleHistoricalImport,
+  closeHistoricalImportModal,
+  confirmHistoricalImport,
 });
 
 initialize();

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="theme-color" content="#f2f6f5" />
     <title>Cycle Context — Speak your day. Notice what changes. Hand your doctor a one-pager.</title>
-    <link rel="stylesheet" href="styles/styles.css?v=0.7.3" />
+    <link rel="stylesheet" href="styles/styles.css?v=0.7.4" />
   </head>
   <body>
     <div class="shell">
@@ -654,6 +654,9 @@
               </p>
             </div>
             <div class="header-actions">
+              <button class="btn soft" onclick="document.getElementById('historicalImportInput').click()" title="Import past cycles from Apple Health XML/CSV, Clue, Flo, or standard CSV">
+                📥 Import history
+              </button>
               <button class="btn" onclick="openLog('symptom')">
                 ＋ Check-in</button
               ><button class="btn primary" onclick="openLog('period')">
@@ -780,6 +783,83 @@
               symptoms. Cycle Context does not make treatment recommendations or
               claim efficacy.
             </div>
+          </div>
+
+          <!-- Clinical Lab Work Timing Planner & Myth Buster -->
+          <div class="card lab-planner-card" id="labPlannerCard">
+            <div class="lab-planner-top">
+              <div>
+                <div class="lab-eyebrow">
+                  <svg
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    style="vertical-align: -1px; margin-right: 4px"
+                  >
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                    <line x1="16" y1="2" x2="16" y2="6" />
+                    <line x1="8" y1="2" x2="8" y2="6" />
+                    <line x1="3" y1="10" x2="21" y2="10" />
+                  </svg>
+                  ACOG &amp; Endocrine Society Timing · Myth Buster
+                </div>
+                <h3 class="card-title">
+                  Clinical Lab Work Timing Planner
+                  <small id="labPlannerCycleBadge">Adaptive to your cycle</small>
+                </h3>
+                <p class="lab-planner-subhead">
+                  Calculates medically accurate test dates for hormone bloodwork and pelvic ultrasound based on your personal cycle length. Dispels the misleading rigid &ldquo;Day 21&rdquo; schedule for variable and longer cycles.
+                </p>
+              </div>
+              <div class="lab-planner-actions">
+                <button
+                  class="btn"
+                  id="downloadIcsBtn"
+                  onclick="downloadLabICSFile()"
+                  title="Download .ICS file to add lab appointments to Apple Calendar or Google Calendar"
+                >
+                  📥 Add to Calendar (.ics)
+                </button>
+                <button
+                  class="btn soft"
+                  onclick="copyLabSchedule()"
+                  title="Copy formatted schedule for your doctor or notes"
+                >
+                  📋 Copy Schedule
+                </button>
+              </div>
+            </div>
+
+            <div class="lab-planner-controls">
+              <div class="lab-input-group">
+                <label for="labPeriodStart">Cycle Day 1 (Period Start):</label>
+                <input
+                  type="date"
+                  id="labPeriodStart"
+                  onchange="renderLabPlanner()"
+                />
+              </div>
+              <div class="lab-input-group">
+                <label for="labCycleLength">Cycle Length (Days):</label>
+                <div class="lab-number-stepper">
+                  <input
+                    type="number"
+                    id="labCycleLength"
+                    min="21"
+                    max="90"
+                    onchange="renderLabPlanner()"
+                  />
+                  <span class="lab-input-hint" id="labCycleLengthHint"
+                    >Your median: 29 days</span
+                  >
+                </div>
+              </div>
+            </div>
+
+            <div class="lab-phases-grid" id="labPhasesGrid"></div>
           </div>
           <div class="section-grid">
             <div class="card">
@@ -1226,6 +1306,29 @@
               <button class="btn primary" onclick="exportDataBackup()">
                 Download backup (JSON)
               </button>
+            </div>
+            <div class="privacy-row">
+              <div>
+                <strong>Import history from Apple Health, Clue, or Flo</strong>
+                <p>
+                  Bring years of past cycle history into Cycle Context in 1 click. Accepts Apple Health XML or CSV, Clue CSV exports, Flo CSV exports, or standard period spreadsheets. 100% private in-browser parsing.
+                </p>
+              </div>
+              <div>
+                <input
+                  type="file"
+                  id="historicalImportInput"
+                  accept=".xml,.csv,.txt"
+                  hidden
+                  onchange="handleHistoricalImport(this)"
+                />
+                <button
+                  class="btn primary"
+                  onclick="document.getElementById('historicalImportInput').click()"
+                >
+                  📥 Import from other apps
+                </button>
+              </div>
             </div>
             <div class="privacy-row">
               <div>
@@ -1702,6 +1805,102 @@
             onclick="saveMedication()"
           >
             Save regimen
+          </button>
+        </div>
+      </div>
+    </div>
+    <!-- Historical Cycle Importer Modal -->
+    <div
+      class="modal-backdrop"
+      id="historicalImportModalBackdrop"
+      onclick="if (event.target === this) closeHistoricalImportModal();"
+    >
+      <div class="modal import-modal">
+        <div class="modal-head">
+          <div>
+            <h3 id="importModalTitle">Review Imported History</h3>
+            <span
+              class="tag green"
+              id="importModalSourceTag"
+              style="margin-top: 4px; display: inline-block"
+              >Apple Health</span
+            >
+          </div>
+          <button
+            class="close"
+            onclick="closeHistoricalImportModal()"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+        <div class="import-preview-body">
+          <p class="import-intro" id="importModalIntro">
+            We analyzed your file and found historical cycle data ready to import into your private timeline.
+          </p>
+          <div class="import-stats-grid">
+            <div class="import-stat-box">
+              <span class="import-stat-num" id="importStatStarts">0</span>
+              <span class="import-stat-label">Period Starts</span>
+            </div>
+            <div class="import-stat-box">
+              <span class="import-stat-num" id="importStatEnds">0</span>
+              <span class="import-stat-label">Period Ends</span>
+            </div>
+            <div class="import-stat-box">
+              <span class="import-stat-num" id="importStatSymptoms">0</span>
+              <span class="import-stat-label">Symptoms &amp; Notes</span>
+            </div>
+            <div class="import-stat-box">
+              <span class="import-stat-num" id="importStatBleedDays">0</span>
+              <span class="import-stat-label">Bleeding Days</span>
+            </div>
+          </div>
+          <div class="import-date-span-banner" id="importDateSpanBanner">
+            Date span: <strong>—</strong>
+          </div>
+          <div class="field" style="margin-top: 16px">
+            <label>Import Strategy</label>
+            <div class="import-strategy-options">
+              <label class="import-strategy-label">
+                <input
+                  type="radio"
+                  name="importStrategy"
+                  value="merge"
+                  checked
+                />
+                <div>
+                  <strong>Merge with current records (Recommended)</strong>
+                  <small
+                    >Keeps your current records and appends past history, ignoring duplicates on identical dates.</small
+                  >
+                </div>
+              </label>
+              <label class="import-strategy-label">
+                <input type="radio" name="importStrategy" value="replace" />
+                <div>
+                  <strong>Replace existing records</strong>
+                  <small
+                    >Overwrites all period and symptom records with the imported file.</small
+                  >
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div
+          class="modal-actions"
+          style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px"
+        >
+          <button class="btn" onclick="closeHistoricalImportModal()">
+            Cancel
+          </button>
+          <button
+            class="btn primary"
+            id="confirmImportBtn"
+            onclick="confirmHistoricalImport()"
+          >
+            Confirm &amp; Import Data
           </button>
         </div>
       </div>
