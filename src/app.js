@@ -1016,7 +1016,7 @@ function renderCycleChart() {
   const circles = intervals
     .map(
       (item, index) =>
-        `<circle cx="${xAt(index)}" cy="${yAt(item.days)}" r="5" fill="#075f59" stroke="#fffefa" stroke-width="3"><title>${item.days} days, ending ${formatDate(item.end.date)}</title></circle>`,
+        `<circle cx="${xAt(index)}" cy="${yAt(item.days)}" r="5" fill="#075f59" stroke="#ffffff" stroke-width="3"><title>${item.days} days, ending ${formatDate(item.end.date)}</title></circle>`,
     )
     .join("");
   chart.innerHTML = `<svg viewBox="0 0 600 190" preserveAspectRatio="none" role="img" aria-label="Recorded cycle lengths over time">
@@ -1547,8 +1547,11 @@ function renderSymptomPatterns() {
                 ? `(${p.daysBeforeNext}d before next period)`
                 : "";
             return `<div class="symptom-entry-bullet">
-          <span><strong>${formatDate(e.date)}</strong>: ${cycleLabel} ${preLabel} <span class="phase-pill ${p.phaseSlug}" style="font-size:9px;padding:1px 5px;margin-left:4px">${p.phaseSlug}</span></span>
-          <span style="font-style:italic">${escapeHTML(e.detail && e.detail !== "Added by you" ? e.detail : "")}</span>
+          <span class="symptom-entry-date">
+            <strong>${formatDate(e.date)}</strong>: ${cycleLabel} ${preLabel ? `<span class="symptom-cycle-timing">${preLabel}</span>` : ""}
+          </span>
+          <span class="phase-pill ${p.phaseSlug}">${p.phaseSlug}</span>
+          <span class="symptom-entry-detail">${escapeHTML(e.detail && e.detail !== "Added by you" ? e.detail : "")}</span>
         </div>`;
           })
           .join("");
@@ -1705,8 +1708,8 @@ function renderSymptomPatterns() {
                   ? `(${t.daysBeforeNext}d before next period)`
                   : "";
               return `<div class="symptom-entry-bullet">
-            <span><strong>${formatDate(e.date)}</strong>: ${cycleLabel} ${preLabel}</span>
-            <span style="font-style:italic">${escapeHTML(e.detail && e.detail !== "Added by you" ? e.detail : "")}</span>
+            <span class="symptom-entry-date"><strong>${formatDate(e.date)}</strong>: ${cycleLabel} ${preLabel ? `<span class="symptom-cycle-timing">${preLabel}</span>` : ""}</span>
+            <span class="symptom-entry-detail">${escapeHTML(e.detail && e.detail !== "Added by you" ? e.detail : "")}</span>
           </div>`;
             })
             .join("");

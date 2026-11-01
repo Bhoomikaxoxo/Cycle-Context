@@ -3,9 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="theme-color" content="#f7f6f2" />
+    <meta name="theme-color" content="#f2f6f5" />
     <title>Cycle Context — your health, in context</title>
-    <link rel="stylesheet" href="styles/styles.css" />
+    <link rel="stylesheet" href="styles/styles.css?v=0.7.2" />
   </head>
   <body>
     <div class="shell">
@@ -442,7 +442,7 @@
               ＋ Mark a change
             </button>
           </div>
-          <div class="section-grid">
+          <div class="patterns-layout">
             <div class="card">
               <h3 class="card-title">
                 Cycle length over time <small>days between period starts</small>
@@ -454,57 +454,59 @@
                 ><span><i></i>Context marker</span>
               </div>
             </div>
-            <div class="card change-explorer-card" id="changeExplorerCard">
-              <div class="change-explorer-head">
-                <div>
-                  <h3 class="card-title">
-                    Around a change
-                    <small id="changeMarkerLabel">Personal markers</small>
-                  </h3>
-                  <p class="change-explorer-sub">
-                    Compare your cycle intervals, bleeding duration, and
-                    symptoms recorded before and after any milestone.
-                  </p>
-                </div>
-                <div
-                  class="change-select-wrapper"
-                  id="changeSelectWrapper"
-                ></div>
-              </div>
-              <div id="changeCompare"></div>
-            </div>
-            <div class="card population-card" id="populationCard">
-              <div class="population-header">
-                <div>
-                  <div class="pop-eyebrow">
-                    <svg
-                      width="13"
-                      height="13"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      style="vertical-align: -1px; margin-right: 4px"
-                    >
-                      <circle cx="12" cy="12" r="10" />
-                      <path
-                        d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"
-                      />
-                      <path d="M2 12h20" /></svg
-                    >Context layer · Published research
+            <div class="pattern-comparisons-grid">
+              <div class="card change-explorer-card" id="changeExplorerCard">
+                <div class="change-explorer-head">
+                  <div>
+                    <h3 class="card-title">
+                      Around a change
+                      <small id="changeMarkerLabel">Personal markers</small>
+                    </h3>
+                    <p class="change-explorer-sub">
+                      Compare your cycle intervals, bleeding duration, and
+                      symptoms recorded before and after any milestone.
+                    </p>
                   </div>
-                  <h3 class="card-title">
-                    Population reference
-                    <small>Bull et al. 2019 (n=612,613 cycles)</small>
-                  </h3>
-                  <p class="change-explorer-sub">
-                    Compare your recorded cycle length distribution and variance
-                    against large-scale published study data.
-                  </p>
+                  <div
+                    class="change-select-wrapper"
+                    id="changeSelectWrapper"
+                  ></div>
                 </div>
-                <span class="population-badge" id="populationBadge">—</span>
+                <div id="changeCompare"></div>
               </div>
-              <div id="populationCompare"></div>
+              <div class="card population-card" id="populationCard">
+                <div class="population-header">
+                  <div>
+                    <div class="pop-eyebrow">
+                      <svg
+                        width="13"
+                        height="13"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        style="vertical-align: -1px; margin-right: 4px"
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <path
+                          d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"
+                        />
+                        <path d="M2 12h20" /></svg
+                      >Context layer · Published research
+                    </div>
+                    <h3 class="card-title">
+                      Population reference
+                      <small>Bull et al. 2019 (n=612,613 cycles)</small>
+                    </h3>
+                    <p class="change-explorer-sub">
+                      Compare your recorded cycle length distribution and variance
+                      against large-scale published study data.
+                    </p>
+                  </div>
+                  <span class="population-badge" id="populationBadge">—</span>
+                </div>
+                <div id="populationCompare"></div>
+              </div>
             </div>
             <div class="card symptom-timing-card" id="symptomTimingCard">
               <div class="symptom-card-header">
