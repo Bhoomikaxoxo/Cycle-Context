@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="theme-color" content="#f2f6f5" />
-    <title>Cycle Context — your health, in context</title>
-    <link rel="stylesheet" href="styles/styles.css?v=0.7.2" />
+    <title>Cycle Context — Speak your day. Notice what changes. Hand your doctor a one-pager.</title>
+    <link rel="stylesheet" href="styles/styles.css?v=0.7.3" />
   </head>
   <body>
     <div class="shell">
@@ -13,7 +13,7 @@
         <div class="brand">
           <div class="brand-icon">c.</div>
           <div>
-            <strong>cycle context</strong><small>Your health, in context</small>
+            <strong>cycle context</strong><small>Speak your day · Notice what changes</small>
           </div>
         </div>
         <div class="nav-label">Your space</div>
@@ -133,10 +133,10 @@
         <section class="page active" id="page-today">
           <div class="header-row">
             <div>
-              <div class="eyebrow">Your space</div>
-              <h1 class="heading">Your cycle, with context in view.</h1>
+              <div class="eyebrow">Your Daily View</div>
+              <h1 class="heading">Speak your day. Notice what changes.</h1>
               <p class="subhead">
-                Your cycle history, with room for life to change.
+                Track what you feel in your own words, understand how your body changes, and hand your doctor a one-pager.
               </p>
             </div>
             <div class="header-actions">
@@ -147,285 +147,313 @@
               </button>
             </div>
           </div>
-          <div class="card voice-card">
-            <div class="voice-inner">
-              <div class="voice-top">
-                <div>
-                  <h2 class="voice-title">Check in, in your own words.</h2>
-                  <p class="voice-sub">
-                    Say when bleeding started or ended, what you felt, or
-                    anything else you want to remember. Review the dated details
-                    before saving.
-                  </p>
+
+          <div class="today-focus-flow">
+            <!-- Job 1: Where am I in my range? -->
+            <div class="card readiness-card" id="readinessCard">
+              <div class="readiness-header">
+                <div class="readiness-title-area">
+                  <h3>Where am I in my range?</h3>
+                  <small id="readinessSource"
+                    >Adaptive cycle range based on your logged history</small
+                  >
+                </div>
+                <span class="readiness-badge" id="readinessBadge">—</span>
+              </div>
+              <div class="readiness-hero">
+                <div class="readiness-dates-wrap">
+                  <div class="readiness-label">
+                    Next expected start window
+                  </div>
+                  <div class="readiness-dates-value" id="readinessDates">
+                    —
+                  </div>
+                </div>
+                <div class="readiness-cycle-day">
+                  <div class="readiness-label">Current Cycle</div>
+                  <strong id="readinessCycleDay">Day —</strong>
                 </div>
               </div>
-              <div class="voice-controls">
-                <button
-                  class="record-btn"
-                  id="recordBtn"
-                  onclick="toggleRecording()"
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Zm-7-3a7 7 0 0 0 14 0M12 18v4m-4 0h8"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                    /></svg
-                  >&nbsp; Start voice check-in</button
-                ><span class="voice-status" id="voiceStatus"
-                  >Nothing is saved until you review it.</span
-                >
+              <div class="readiness-track-container">
+                <div class="readiness-track" id="readinessTrack">
+                  <div class="readiness-band" id="readinessBand"></div>
+                  <div
+                    class="readiness-marker"
+                    id="readinessMarker"
+                    title="Current Day"
+                  ></div>
+                </div>
+                <div class="readiness-track-meta">
+                  <span id="readinessScaleStart">Day 1</span
+                  ><span id="readinessScaleWindow">Expected window</span
+                  ><span id="readinessScaleEnd">Day 60+</span>
+                </div>
               </div>
-              <div class="voice-input show" id="voiceInput">
-                <textarea
-                  id="voiceText"
-                  placeholder="For example: “My period started on Monday and ended Thursday. I had cramps on the first day.”"
-                ></textarea
-                ><button
-                  class="btn voice-review-trigger"
-                  id="reviewVoiceBtn"
-                  onclick="reviewTypedCheckin()"
-                >
-                  Review check-in
+              <div class="readiness-guidance" id="readinessGuidance">
+                <div class="readiness-guidance-content">
+                  <strong id="readinessTipTitle">Readiness guidance</strong
+                  ><span id="readinessTipBody"
+                    >Add your period start dates to see your personal window of possibility.</span
+                  >
+                </div>
+              </div>
+              <div class="readiness-actions">
+                <button class="btn primary" onclick="openLog('period')">
+                  ＋ Log period start</button
+                ><button class="btn" onclick="openLog('symptom')">
+                  ＋ Quick check-in
                 </button>
               </div>
-              <div class="voice-review" id="voiceReview">
-                <div class="voice-review-head">
+            </div>
+
+            <!-- Job 2: 10-second check-in -->
+            <div class="card voice-card">
+              <div class="voice-inner">
+                <div class="voice-top">
                   <div>
-                    <strong
-                      style="font-size: 14px; color: var(--ink); display: block"
-                      >Review your check-in</strong
-                    ><small style="color: var(--muted)"
-                      >Check the details below before saving to your
-                      timeline</small
-                    >
+                    <h2 class="voice-title">Start a 10-second check-in.</h2>
+                    <p class="voice-sub">
+                      Say or type when bleeding started, how you felt, or anything you want to remember. Review before saving.
+                    </p>
                   </div>
-                  <button
-                    class="text-button"
-                    id="toggleTranscriptBtn"
-                    onclick="toggleSpokenTextEdit()"
-                  >
-                    Edit words
-                  </button>
                 </div>
-                <div
-                  id="reviewTextContainer"
-                  style="display: none; margin: 8px 0 12px"
-                >
+                <div class="voice-controls">
+                  <button
+                    class="record-btn"
+                    id="recordBtn"
+                    onclick="toggleRecording()"
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Zm-7-3a7 7 0 0 0 14 0M12 18v4m-4 0h8"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                      /></svg
+                    >&nbsp; Speak your day</button
+                  ><span class="voice-status" id="voiceStatus"
+                    >Nothing is saved until you review it.</span
+                  >
+                </div>
+                <div class="voice-input show" id="voiceInput">
                   <textarea
-                    id="reviewText"
-                    aria-label="Edit your check-in text"
+                    id="voiceText"
+                    placeholder="For example: “My period started on Monday and ended Thursday. I had cramps on the first day.”"
                   ></textarea
                   ><button
-                    class="btn soft"
-                    style="font-size: 11px; margin-top: 6px"
-                    onclick="refreshVoiceEvents()"
+                    class="btn voice-review-trigger"
+                    id="reviewVoiceBtn"
+                    onclick="reviewTypedCheckin()"
                   >
-                    Re-analyze wording
+                    Review check-in
                   </button>
                 </div>
-                <div class="voice-event-heading">
-                  <strong>Identified details</strong
-                  ><button class="text-button" onclick="addVoiceEvent()">
-                    ＋ Add detail
+                <div class="voice-review" id="voiceReview">
+                  <div class="voice-review-head">
+                    <div>
+                      <strong
+                        style="font-size: 14px; color: var(--ink); display: block"
+                        >Review your check-in</strong
+                      ><small style="color: var(--muted)"
+                        >Check the details below before saving to your timeline</small
+                      >
+                    </div>
+                    <button
+                      class="text-button"
+                      id="toggleTranscriptBtn"
+                      onclick="toggleSpokenTextEdit()"
+                    >
+                      Edit words
+                    </button>
+                  </div>
+                  <div
+                    id="reviewTextContainer"
+                    style="display: none; margin: 8px 0 12px"
+                  >
+                    <textarea
+                      id="reviewText"
+                      aria-label="Edit your check-in text"
+                    ></textarea
+                    ><button
+                      class="btn soft"
+                      style="font-size: 11px; margin-top: 6px"
+                      onclick="refreshVoiceEvents()"
+                    >
+                      Re-analyze wording
+                    </button>
+                  </div>
+                  <div class="voice-event-heading">
+                    <strong>Identified details</strong
+                    ><button class="text-button" onclick="addVoiceEvent()">
+                      ＋ Add detail
+                    </button>
+                  </div>
+                  <div id="voiceEvents" class="voice-events"></div>
+                  <label class="inline-check" style="margin-top: 12px"
+                    ><input type="checkbox" id="addAsNote" /> Also show the full
+                    note on my timeline</label
+                  ><button class="voice-save" onclick="saveVoiceEntry()">
+                    Save check-in to timeline&nbsp; →
                   </button>
-                </div>
-                <div id="voiceEvents" class="voice-events"></div>
-                <label class="inline-check" style="margin-top: 12px"
-                  ><input type="checkbox" id="addAsNote" /> Also show the full
-                  note on my timeline</label
-                ><button class="voice-save" onclick="saveVoiceEntry()">
-                  Save check-in to timeline&nbsp; →
-                </button>
-                <div class="voice-help">
-                  Your note stays on this device. Nothing is saved until you
-                  confirm.
+                  <div class="voice-help">
+                    Your note stays on this device. Nothing is saved until you confirm.
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-          <div class="grid">
-            <div class="grid-col-main">
-              <div class="card hero-card">
-                <div class="hero-content">
-                  <span class="status-pill"><i></i>Personal history view</span>
-                  <h2>Your cycle is personal. Your history should be, too.</h2>
-                  <p>
-                    We’ll help you notice what you’ve recorded, when it changes,
-                    and what you may want to bring to your next appointment.
-                  </p>
-                  <button class="hero-link" onclick="go('patterns')">
-                    Explore your patterns&nbsp; →
-                  </button>
+
+            <!-- Distinct Pillars Navigation -->
+            <div class="today-destinations-grid">
+              <div class="card destination-card" onclick="go('patterns')">
+                <div class="destination-icon">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                  </svg>
                 </div>
-              </div>
-              <div class="stats">
-                <div class="stat">
-                  <span class="label">Cycle range</span
-                  ><strong id="cycleLengthRange">—</strong
-                  ><small id="cycleRangeCaption">Need 2 period starts</small>
-                </div>
-                <div class="stat">
-                  <span class="label">Periods</span
-                  ><strong id="periodCount">0</strong
-                  ><small>Starts logged</small>
-                </div>
-                <div class="stat">
-                  <span class="label">Bleeding length</span
-                  ><strong id="bleedingDuration">—</strong
-                  ><small id="bleedingCaption">Need a start + end</small>
-                </div>
-                <div class="stat">
-                  <span class="label">Check-ins</span
-                  ><strong id="checkinCount">0</strong
-                  ><small>Past 30 days</small>
-                </div>
-              </div>
-              <div class="card readiness-card" id="readinessCard">
-                <div class="readiness-header">
-                  <div class="readiness-title-area">
-                    <h3>Window of Possibility &amp; Readiness</h3>
-                    <small id="readinessSource"
-                      >Adaptive cycle range based on your logged history</small
-                    >
-                  </div>
-                  <span class="readiness-badge" id="readinessBadge">—</span>
-                </div>
-                <div class="readiness-hero">
-                  <div class="readiness-dates-wrap">
-                    <div class="readiness-label">
-                      Next expected start window
-                    </div>
-                    <div class="readiness-dates-value" id="readinessDates">
-                      —
-                    </div>
-                  </div>
-                  <div class="readiness-cycle-day">
-                    <div class="readiness-label">Current Cycle</div>
-                    <strong id="readinessCycleDay">Day —</strong>
-                  </div>
-                </div>
-                <div class="readiness-track-container">
-                  <div class="readiness-track" id="readinessTrack">
-                    <div class="readiness-band" id="readinessBand"></div>
-                    <div
-                      class="readiness-marker"
-                      id="readinessMarker"
-                      title="Current Day"
-                    ></div>
-                  </div>
-                  <div class="readiness-track-meta">
-                    <span id="readinessScaleStart">Day 1</span
-                    ><span id="readinessScaleWindow">Expected window</span
-                    ><span id="readinessScaleEnd">Day 60+</span>
-                  </div>
-                </div>
-                <div class="readiness-guidance" id="readinessGuidance">
-                  <div class="readiness-guidance-content">
-                    <strong id="readinessTipTitle">Readiness guidance</strong
-                    ><span id="readinessTipBody"
-                      >Add your period start dates to see your personal window
-                      of possibility.</span
-                    >
-                  </div>
-                </div>
-                <div class="readiness-actions">
-                  <button class="btn primary" onclick="openLog('period')">
-                    ＋ Log period</button
-                  ><button class="btn" onclick="openLog('symptom')">
-                    ＋ Quick check-in
-                  </button>
-                </div>
-              </div>
-              <div class="card range-card">
-                <h3 class="card-title">
-                  Your cycle lengths <small>Last 6 cycles</small>
-                </h3>
-                <div class="range-track">
-                  <div class="range-band"></div>
-                  <div class="range-dot"></div>
-                </div>
-                <div class="range-labels">
-                  <span>20</span><span>40</span><span>60</span><span>80</span
-                  ><span>100</span><span>120+ days</span>
-                </div>
-                <div class="range-caption">
-                  <span id="latestCycleRange">Not enough data</span
-                  ><span id="rangeCaption"
-                    >Cycle lengths appear after two period starts.</span
-                  >
-                </div>
-              </div>
-              <div class="card timeline-card">
-                <h3 class="card-title">
-                  Recent timeline
-                  <button class="hero-link" onclick="go('timeline')">
-                    View all →
-                  </button>
-                </h3>
-                <div class="timeline" id="recentTimeline"></div>
-              </div>
-            </div>
-            <div class="grid-col-side">
-              <div class="card">
-                <h3 class="card-title">
-                  A pattern to explore <small>From your logs</small>
-                </h3>
-                <div id="summaryInsight" class="insight">
-                  <div class="insight-tag">From your entries</div>
-                  <p>
-                    Add a voice check-in or cycle detail to start building your
-                    personal history.
+                <div class="destination-body">
+                  <span class="destination-pill">Job 2 · Notice what changes</span>
+                  <h3 class="destination-title">Patterns &amp; Milestones</h3>
+                  <p class="destination-desc">
+                    See your cycle intervals before and after routine changes, plus catamenial symptom recurrence.
                   </p>
                 </div>
-                <div class="callout">
-                  This describes your entries; it does not explain what caused a
-                  change.
-                </div>
+                <span class="destination-arrow">Explore patterns →</span>
               </div>
-              <div class="card">
-                <h3 class="card-title">Your next step</h3>
-                <p
-                  style="
-                    font-size: 12px;
-                    color: var(--muted);
-                    margin: -5px 0 15px;
-                  "
-                >
-                  Keep adding what feels useful. You can turn your history into
-                  an appointment summary anytime.
-                </p>
-                <button
-                  class="btn soft"
-                  style="width: 100%"
-                  onclick="go('summary')"
-                >
-                  Prepare a visit summary&nbsp; →
-                </button>
-              </div>
-              <div class="card">
-                <h3 class="card-title">
-                  From your records
-                  <small id="recordSummaryCount">Your notes and files</small>
-                </h3>
-                <div id="recordSummaryPreview" class="report-row">
-                  <div>
-                    <strong>Your private record library</strong
-                    ><small>Reports and notes stay on this device</small>
-                  </div>
+
+              <div class="card destination-card" onclick="go('summary')">
+                <div class="destination-icon doctor">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                  </svg>
                 </div>
-                <button class="hero-link" onclick="go('records')">
-                  View your records&nbsp; →
-                </button>
+                <div class="destination-body">
+                  <span class="destination-pill doc">Job 3 · Hand your doctor a one-pager</span>
+                  <h3 class="destination-title">Clinician Consultation Brief</h3>
+                  <p class="destination-desc">
+                    Ready to generate an editable, single-page FIGO-aligned PDF clinical brief for your appointment in 1 click.
+                  </p>
+                </div>
+                <span class="destination-arrow">Prepare one-pager →</span>
               </div>
             </div>
+
+            <!-- Progressive Disclosure: Secondary Statistics & Timeline Drawer -->
+            <details class="today-secondary-drawer">
+              <summary class="today-drawer-toggle">
+                <span>Recent timeline &amp; cycle statistics</span>
+                <span class="drawer-chevron">▾</span>
+              </summary>
+              <div class="today-drawer-content">
+                <div class="stats">
+                  <div class="stat">
+                    <span class="label">Cycle range</span
+                    ><strong id="cycleLengthRange">—</strong
+                    ><small id="cycleRangeCaption">Need 2 period starts</small>
+                  </div>
+                  <div class="stat">
+                    <span class="label">Periods</span
+                    ><strong id="periodCount">0</strong
+                    ><small>Starts logged</small>
+                  </div>
+                  <div class="stat">
+                    <span class="label">Bleeding length</span
+                    ><strong id="bleedingDuration">—</strong
+                    ><small id="bleedingCaption">Need a start + end</small>
+                  </div>
+                  <div class="stat">
+                    <span class="label">Check-ins</span
+                    ><strong id="checkinCount">0</strong
+                    ><small>Past 30 days</small>
+                  </div>
+                </div>
+
+                <div class="grid" style="margin-top: 16px">
+                  <div class="grid-col-main">
+                    <div class="card range-card">
+                      <h3 class="card-title">
+                        Your cycle lengths <small>Last 6 cycles</small>
+                      </h3>
+                      <div class="range-track">
+                        <div class="range-band"></div>
+                        <div class="range-dot"></div>
+                      </div>
+                      <div class="range-labels">
+                        <span>20</span><span>40</span><span>60</span><span>80</span
+                        ><span>100</span><span>120+ days</span>
+                      </div>
+                      <div class="range-caption">
+                        <span id="latestCycleRange">Not enough data</span
+                        ><span id="rangeCaption"
+                          >Cycle lengths appear after two period starts.</span
+                        >
+                      </div>
+                    </div>
+                    <div class="card timeline-card">
+                      <h3 class="card-title">
+                        Recent timeline
+                        <button class="hero-link" onclick="go('timeline')">
+                          View all →
+                        </button>
+                      </h3>
+                      <div class="timeline" id="recentTimeline"></div>
+                    </div>
+                  </div>
+                  <div class="grid-col-side">
+                    <div class="card hero-card" style="display: none">
+                      <span class="status-pill"><i></i>Personal history view</span>
+                      <h2>Your cycle is personal.</h2>
+                    </div>
+                    <div class="card">
+                      <h3 class="card-title">
+                        A pattern to explore <small>From your logs</small>
+                      </h3>
+                      <div id="summaryInsight" class="insight">
+                        <div class="insight-tag">From your entries</div>
+                        <p>
+                          Add a voice check-in or cycle detail to start building your personal history.
+                        </p>
+                      </div>
+                      <div class="callout">
+                        This describes your entries; it does not explain what caused a change.
+                      </div>
+                    </div>
+                    <div class="card">
+                      <h3 class="card-title">Your next step</h3>
+                      <p style="font-size: 12px; color: var(--muted); margin: -5px 0 15px">
+                        Keep adding what feels useful. You can turn your history into an appointment summary anytime.
+                      </p>
+                      <button class="btn soft" style="width: 100%" onclick="go('summary')">
+                        Prepare a visit summary&nbsp; →
+                      </button>
+                    </div>
+                    <div class="card">
+                      <h3 class="card-title">
+                        From your records
+                        <small id="recordSummaryCount">Your notes and files</small>
+                      </h3>
+                      <div id="recordSummaryPreview" class="report-row">
+                        <div>
+                          <strong>Your private record library</strong
+                          ><small>Reports and notes stay on this device</small>
+                        </div>
+                      </div>
+                      <button class="hero-link" onclick="go('records')">
+                        View your records&nbsp; →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </details>
           </div>
         </section>
 

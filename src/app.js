@@ -1351,78 +1351,94 @@ function renderPopulationComparison() {
   `
     : "";
 
+  let conversationalTitle = "Your cycles land in the typical population range";
+  if (popComp.band === "longer-90" || popComp.band === "longer-50") {
+    conversationalTitle = `Your cycles run longer than average (Median: ${popComp.userMedian} days)`;
+  } else if (popComp.band === "shorter-90" || popComp.band === "shorter-50") {
+    conversationalTitle = `Your cycles run shorter than average (Median: ${popComp.userMedian} days)`;
+  }
+
   container.innerHTML = `
-    <div class="population-stats-row">
-      <div class="pop-stat-item">
-        <span class="pop-stat-label">Your Median</span>
-        <div class="pop-stat-val">${popComp.userMedian} <small style="font-size:13px;font-weight:400">days</small></div>
-        <span class="pop-stat-sub">Range: ${popComp.userMin}–${popComp.userMax} d (n=${analysis.basedOnCycles})</span>
-      </div>
-      <div class="pop-stat-item">
-        <span class="pop-stat-label">Study Median</span>
-        <div class="pop-stat-val">${popComp.populationMedian} <small style="font-size:13px;font-weight:400">days</small></div>
-        <span class="pop-stat-sub">Bull et al. 2019</span>
-      </div>
-      <div class="pop-stat-item">
-        <span class="pop-stat-label">Middle 50% (IQR)</span>
-        <div class="pop-stat-val">${popComp.middle50.min}–${popComp.middle50.max} <small style="font-size:13px;font-weight:400">days</small></div>
-        <span class="pop-stat-sub">25th to 75th percentile</span>
-      </div>
-      <div class="pop-stat-item">
-        <span class="pop-stat-label">Middle 90%</span>
-        <div class="pop-stat-val">${popComp.middle90.min}–${popComp.middle90.max} <small style="font-size:13px;font-weight:400">days</small></div>
-        <span class="pop-stat-sub">5th to 95th percentile</span>
-      </div>
-    </div>
-
-    <div class="pop-dist-container">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
-        <strong style="font-size:12px;color:var(--ink)">Population Distribution &amp; Your Recorded Cycles</strong>
-        <span style="font-size:11px;color:var(--muted)">Scale: 20 to 42+ days</span>
-      </div>
-
-      <div class="pop-dist-track-outer">
-        <div class="pop-density-histogram">
-          ${densityBarsHTML}
-        </div>
-        <div class="pop-range-track">
-          <div class="pop-band-90" style="left:${band90Left}%;width:${band90Width}%" title="Middle 90% (23–38 days)"></div>
-          <div class="pop-band-50" style="left:${band50Left}%;width:${band50Width}%" title="Middle 50% (27–31 days)"></div>
-          <div class="pop-median-mark" style="left:${medianPos}%" title="Population Median: 29.0 days"></div>
-
-          <!-- User overlay -->
-          <div class="pop-user-span" style="left:${userBandLeft}%;width:${userBandWidth}%" title="Your recorded cycle span: ${popComp.userMin}–${popComp.userMax} days"></div>
-          <div class="pop-user-pin" style="left:${userMedianPos}%" title="Your cycle median: ${popComp.userMedian} days"></div>
-        </div>
-      </div>
-
-      <div class="pop-axis-row">
-        <span>20d</span>
-        <span>24d</span>
-        <span>29d (Median)</span>
-        <span>34d</span>
-        <span>38d</span>
-        <span>42d+</span>
-      </div>
-
-      <div class="pop-legend">
-        <div class="pop-legend-item"><span class="pop-legend-swatch band50"></span><span>Middle 50% of population (27–31d)</span></div>
-        <div class="pop-legend-item"><span class="pop-legend-swatch band90"></span><span>Middle 90% of population (23–38d)</span></div>
-        <div class="pop-legend-item"><span class="pop-legend-swatch median-line"></span><span>Population median (29.0d)</span></div>
-        <div class="pop-legend-item"><span class="pop-legend-swatch user-range"></span><span>Your logged span (${popComp.userMin}–${popComp.userMax}d)</span></div>
-        <div class="pop-legend-item"><span class="pop-legend-swatch user-pin"></span><span>Your median (${popComp.userMedian}d)</span></div>
-      </div>
-    </div>
-
-    <div class="pop-insight-box">
-      <div>
-        <strong>Where your cycles land:</strong> ${escapeHTML(popComp.bandLabel)}. ${escapeHTML(popComp.narrative)}
-      </div>
+    <div class="pop-conversational-hero">
+      <div class="pop-conversational-title">${conversationalTitle}</div>
+      <p class="pop-conversational-body">${escapeHTML(popComp.narrative)}</p>
       ${varContextHTML}
-      <div style="font-size:10px;color:var(--muted);margin-top:4px">
-        ${escapeHTML(popComp.note)} Data source: ${escapeHTML(popComp.source)}.
-      </div>
     </div>
+
+    <details class="pop-research-drawer">
+      <summary class="pop-drawer-toggle">
+        <span>Explore research benchmark &amp; study distribution (Bull et al. 2019)</span>
+        <span class="drawer-chevron">▾</span>
+      </summary>
+      <div class="pop-drawer-content">
+        <div class="population-stats-row">
+          <div class="pop-stat-item">
+            <span class="pop-stat-label">Your Median</span>
+            <div class="pop-stat-val">${popComp.userMedian} <small style="font-size:13px;font-weight:400">days</small></div>
+            <span class="pop-stat-sub">Range: ${popComp.userMin}–${popComp.userMax} d (n=${analysis.basedOnCycles})</span>
+          </div>
+          <div class="pop-stat-item">
+            <span class="pop-stat-label">Study Median</span>
+            <div class="pop-stat-val">${popComp.populationMedian} <small style="font-size:13px;font-weight:400">days</small></div>
+            <span class="pop-stat-sub">Bull et al. 2019</span>
+          </div>
+          <div class="pop-stat-item">
+            <span class="pop-stat-label">Middle 50% (IQR)</span>
+            <div class="pop-stat-val">${popComp.middle50.min}–${popComp.middle50.max} <small style="font-size:13px;font-weight:400">days</small></div>
+            <span class="pop-stat-sub">25th to 75th percentile</span>
+          </div>
+          <div class="pop-stat-item">
+            <span class="pop-stat-label">Middle 90%</span>
+            <div class="pop-stat-val">${popComp.middle90.min}–${popComp.middle90.max} <small style="font-size:13px;font-weight:400">days</small></div>
+            <span class="pop-stat-sub">5th to 95th percentile</span>
+          </div>
+        </div>
+
+        <div class="pop-dist-container">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+            <strong style="font-size:12px;color:var(--ink)">Population Distribution &amp; Your Recorded Cycles</strong>
+            <span style="font-size:11px;color:var(--muted)">Scale: 20 to 42+ days</span>
+          </div>
+
+          <div class="pop-dist-track-outer">
+            <div class="pop-density-histogram">
+              ${densityBarsHTML}
+            </div>
+            <div class="pop-range-track">
+              <div class="pop-band-90" style="left:${band90Left}%;width:${band90Width}%" title="Middle 90% (23–38 days)"></div>
+              <div class="pop-band-50" style="left:${band50Left}%;width:${band50Width}%" title="Middle 50% (27–31 days)"></div>
+              <div class="pop-median-mark" style="left:${medianPos}%" title="Population Median: 29.0 days"></div>
+
+              <!-- User overlay -->
+              <div class="pop-user-span" style="left:${userBandLeft}%;width:${userBandWidth}%" title="Your recorded cycle span: ${popComp.userMin}–${popComp.userMax} days"></div>
+              <div class="pop-user-pin" style="left:${userMedianPos}%" title="Your cycle median: ${popComp.userMedian} days"></div>
+            </div>
+          </div>
+
+          <div class="pop-axis-row">
+            <span>20d</span>
+            <span>24d</span>
+            <span>29d (Median)</span>
+            <span>34d</span>
+            <span>38d</span>
+            <span>42d+</span>
+          </div>
+
+          <div class="pop-legend">
+            <div class="pop-legend-item"><span class="pop-legend-swatch band50"></span><span>Middle 50% of population (27–31d)</span></div>
+            <div class="pop-legend-item"><span class="pop-legend-swatch band90"></span><span>Middle 90% of population (23–38d)</span></div>
+            <div class="pop-legend-item"><span class="pop-legend-swatch median-line"></span><span>Population median (29.0d)</span></div>
+            <div class="pop-legend-item"><span class="pop-legend-swatch user-range"></span><span>Your logged span (${popComp.userMin}–${popComp.userMax}d)</span></div>
+            <div class="pop-legend-item"><span class="pop-legend-swatch user-pin"></span><span>Your median (${popComp.userMedian}d)</span></div>
+          </div>
+        </div>
+
+        <div style="font-size:10px;color:var(--muted);margin-top:10px">
+          ${escapeHTML(popComp.note)} Data source: ${escapeHTML(popComp.source)}.
+        </div>
+      </div>
+    </details>
+  `;
   `;
 }
 
